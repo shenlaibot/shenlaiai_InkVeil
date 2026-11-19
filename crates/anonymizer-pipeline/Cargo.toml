@@ -1,0 +1,16 @@
+[package]
+name = "anonymizer-pipeline"
+version = "0.1.5"
+license-file = "../../LICENSE"
+edition = "2021"
+description = "墨隐 InkVeil 本地文档脱敏处理管线：sidecar 解析 → 检测合并 → 映射/变换 → 写回"
+
+[dependencies]
+anonymizer-core = { path = "../anonymizer-core" }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+
+[dev-dependencies]
+anonymizer-core = { path = "../anonymizer-core" }

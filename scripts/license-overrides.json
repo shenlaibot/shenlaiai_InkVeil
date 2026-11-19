@@ -1,0 +1,32 @@
+{
+  "_说明": "人工核实过的许可证覆盖项：键为 '生态:包名' 或 '生态:包名@版本'；必须同时给出 license(SPDX) 与 reason。exempt_build_tool=true 仅对 scope=build 的构建期工具生效。",
+  "python:pyinstaller": {
+    "license": "GPL-2.0-or-later WITH Bootloader-exception",
+    "reason": "PyInstaller 的 METADATA 只写了自由文本 'GPLv2-or-later with a special exception which allows to use PyInstaller to build and distribute non-free programs (including commercial ones)'（已在 6.22.3 的 dist-info 核实）；该例外对应 SPDX 的 Bootloader-exception。仅构建期使用。"
+  },
+  "python:pyinstaller-hooks-contrib": {
+    "license": "Apache-2.0 AND GPL-2.0-or-later",
+    "reason": "dist-info LICENSE 声明：标准 hooks 为 GPL-2.0-or-later，runtime hooks 为 Apache-2.0（metadata classifier 同时列出两者）。仅在构建机上运行；runtime hooks 为 Apache-2.0。需人工确认该豁免。",
+    "exempt_build_tool": true
+  },
+  "python:pypdfium2": {
+    "license": "BSD-3-Clause AND Apache-2.0",
+    "reason": "METADATA 为自由文本 'BSD-3-Clause, Apache-2.0, dependency licenses'；其 wheel 内置 PDFium 及其依赖，各自许可证文本在 dist-info/licenses/BUILD_LICENSES/（abseil、freetype、icu、lcms、libjpeg-turbo、openjpeg、libpng、libtiff、zlib 等），已写入 THIRD-PARTY-NOTICES.md。"
+  },
+  "python:colorama": {
+    "license": "BSD-3-Clause",
+    "reason": "仅 Windows 平台依赖（sys_platform == 'win32'），macOS/Linux 构建环境未安装故无元数据；上游为 BSD-3-Clause。待 Windows CI 复核元数据。"
+  },
+  "python:pefile": {
+    "license": "MIT",
+    "reason": "仅 Windows 平台依赖（PyInstaller 在 Windows 上需要），本机无元数据；上游为 MIT。待 Windows CI 复核元数据。"
+  },
+  "python:pywin32-ctypes": {
+    "license": "BSD-3-Clause",
+    "reason": "仅 Windows 平台依赖（PyInstaller），本机无元数据；上游为 BSD-3-Clause。待 Windows CI 复核元数据。"
+  },
+  "python:macholib": {
+    "license": "MIT",
+    "reason": "PyPI 元数据（macholib 1.16.4，已于 2026-11-08 核实）license 字段为 'MIT'、classifier 为 'License :: OSI Approved :: MIT License'；CI 的锁文件环境里安装后的 dist-info 读不到该字段，被误判为“未声明”。它是 PyInstaller 在 macOS 上构建时依赖的包，仅构建期使用，不随应用分发。"
+  }
+}

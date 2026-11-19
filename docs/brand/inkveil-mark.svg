@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="墨隐 InkVeil">
+  <!--
+    墨隐 InkVeil · 应用图标母版
+    宣纸底 · 一笔墨横（遮去文书中的一行）· 朱砂小印
+  -->
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fbf7ef"/>
+      <stop offset="1" stop-color="#ece5d6"/>
+    </linearGradient>
+    <linearGradient id="ink" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#1a1d2b"/>
+      <stop offset="1" stop-color="#0b0d14"/>
+    </linearGradient>
+    <filter id="wash" x="-10%" y="-40%" width="120%" height="180%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+  </defs>
+
+  <!-- 宣纸底 -->
+  <rect width="1024" height="1024" rx="228" fill="url(#paper)"/>
+  <rect x="1.5" y="1.5" width="1021" height="1021" rx="227" fill="none" stroke="#000" stroke-opacity="0.06" stroke-width="3"/>
+
+  <!-- 文书行 -->
+  <g fill="#bfb6a8">
+    <rect x="232" y="262" width="560" height="48" rx="24"/>
+    <rect x="232" y="366" width="400" height="48" rx="24"/>
+    <rect x="232" y="664" width="380" height="48" rx="24"/>
+    <rect x="232" y="768" width="300" height="48" rx="24"/>
+  </g>
+
+  <!-- 墨晕（隐：一层淡淡的纱） -->
+  <path transform="translate(8 24)" filter="url(#wash)" fill="#1a1d2b" fill-opacity="0.16"
+    d="M214 462C238 436 300 446 372 464C500 490 640 484 746 448C792 432 830 426 838 452C848 488 826 556 786 588C720 604 560 586 428 598C340 606 266 612 222 590C190 574 190 492 214 462Z"/>
+
+  <!-- 一笔墨横 -->
+  <path fill="url(#ink)"
+    d="M214 462C238 436 300 446 372 464C500 490 640 484 746 448C792 432 830 426 838 452C848 488 826 556 786 588C720 604 560 586 428 598C340 606 266 612 222 590C190 574 190 492 214 462Z"/>
+  <!-- 飞白 -->
+  <path d="M596 534C676 522 742 514 802 498" fill="none" stroke="#fbf7ef" stroke-opacity="0.55" stroke-width="7" stroke-linecap="round"/>
+
+  <!-- 朱砂印 -->
+  <rect x="676" y="676" width="116" height="116" rx="16" fill="#c4392c"/>
+  <rect x="700" y="700" width="68" height="68" rx="6" fill="none" stroke="#fbf7ef" stroke-width="8"/>
+</svg>

@@ -1,0 +1,9 @@
+pytest
+httpx
+# Tests: generate PDF samples containing Chinese text
+reportlab
+# Model download (install-time only, not needed at runtime; uses HF_ENDPOINT=https://hf-mirror.com)
+huggingface_hub
+# Tests: 复杂语料生成（scripts/gen_complex_corpus.py）
+xlsxwriter
+fonttools

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "InkVeil",
+  "mainBinaryName": "InkVeil",
+  "version": "0.1.5",
+  "identifier": "com.anonkit.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "墨隐 InkVeil - 开源 AI 法律本地脱敏工具",
+        "width": 1100,
+        "height": 760
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' ipc: http://ipc.localhost; connect-src ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'none'",
+      "devCsp": "default-src 'self' ipc: http://ipc.localhost; connect-src 'self' ipc: http://ipc.localhost ws://localhost:1420 http://localhost:1420; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI4NzM0QzlGMEZGODBGNkEKUldScUQvZ1BuMHh6dU5pUmFxZGx0WHc3alErZzZLTXRXTzAvUTJkQXBSVmFTcmdnNTZHTklZZUsK",
+      "endpoints": [
+        "https://updates.anonkit.dev/latest/{{target}}/{{arch}}/{{current_version}}"
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "externalBin": ["binaries/anonkit-sidecar"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "entitlements": "Entitlements.plist",
+      "minimumSystemVersion": "12.0"
+    }
+  }
+}

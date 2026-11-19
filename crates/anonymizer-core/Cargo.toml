@@ -1,0 +1,18 @@
+[package]
+name = "anonymizer-core"
+version = "0.1.5"
+license-file = "../../LICENSE"
+edition = "2024"
+
+[dependencies]
+regex = "1"
+aho-corasick = "1"
+rayon = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+aes-gcm = "0.10"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+hmac = "0.12"
+sha2 = "0.10"
+rand = "0.8"
+base64 = "0.22"

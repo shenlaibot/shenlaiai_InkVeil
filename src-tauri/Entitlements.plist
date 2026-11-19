@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    Hardened Runtime 下的最小放宽，仅因 sidecar（PyInstaller 单文件）在运行时解压并加载
+    onnxruntime / pypdfium2 / pikepdf 等第三方 .so（由各自发布者签名，非本团队签名）。
+    不加 disable-library-validation 时 dyld 会拒绝加载这些库，sidecar 无法启动。
+    allow-unsigned-executable-memory 供 Python ctypes/cffi 与 onnxruntime 使用。
+  -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+</dict>
+</plist>

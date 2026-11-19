@@ -1,0 +1,189 @@
+# CI：每个检查独立 job，失败即失败（不再用 `|| echo` 吞错误）。
+# 例外：clippy / fmt 作为“非阻断但上报”——失败不拦合并，但会写 Step Summary 并产生 warning 注解。
+# 所有第三方 Action 均以 commit SHA 固定（行尾注释为对应版本）；升级时先核对 SHA 再改。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust-test:
+    name: Rust (cargo test --workspace)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      # 仓库 .cargo/config.toml 为本地开发的国内镜像；CI 直连官方 crates.io，
+      # 依赖完整性由 Cargo.lock 中的 checksum 保证。
+      - name: 移除本地镜像配置（CI 用官方 crates.io）
+        run: rm -f .cargo/config.toml
+      - name: Install Linux Tauri system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 分支快照；toolchain 由下方 input 指定
+        with:
+          toolchain: stable
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+      # tauri 构建脚本要求 externalBin 存在；测试不运行 sidecar，放占位文件即可
+      - name: 创建 sidecar 占位二进制
+        run: |
+          mkdir -p src-tauri/binaries
+          touch "src-tauri/binaries/anonkit-sidecar-$(rustc -vV | sed -n 's/^host: //p')"
+      - name: cargo test --workspace
+        run: cargo test --workspace --locked
+
+  rust-lint:
+    name: Rust lint (fmt / clippy，非阻断)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: 移除本地镜像配置（CI 用官方 crates.io）
+        run: rm -f .cargo/config.toml
+      - name: Install Linux Tauri system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 分支快照
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}
+      # 非阻断：continue-on-error + 显式上报（注解 + Step Summary），避免“静默通过”。
+      - name: cargo fmt --check
+        id: fmt
+        continue-on-error: true
+        run: cargo fmt --check
+      - name: cargo clippy
+        id: clippy
+        continue-on-error: true
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: 上报 lint 结果
+        if: always()
+        run: |
+          {
+            echo "### Rust lint（非阻断）"
+            echo "- cargo fmt: ${{ steps.fmt.outcome }}"
+            echo "- cargo clippy: ${{ steps.clippy.outcome }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.fmt.outcome }}" != "success" ]; then echo "::warning::cargo fmt --check 未通过（非阻断）"; fi
+          if [ "${{ steps.clippy.outcome }}" != "success" ]; then echo "::warning::cargo clippy 存在告警（非阻断）"; fi
+
+  typescript:
+    name: Frontend (tsc)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+
+  sidecar-pytest:
+    name: Sidecar (pytest, Python 3.11)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - name: Install sidecar deps（锁文件 + 哈希校验）
+        working-directory: sidecar
+        run: |
+          python -m pip install --require-hashes -r requirements-dev.lock
+      - name: Run sidecar tests
+        working-directory: sidecar
+        run: python -m pytest tests -q
+      # 隐私冒烟：以不可达代理运行隐私测试，若处理路径发起任何外部请求将失败
+      - name: Proxy-blocked privacy smoke (zero exfil)
+        working-directory: sidecar
+        env:
+          HTTP_PROXY: http://127.0.0.1:9
+          HTTPS_PROXY: http://127.0.0.1:9
+          ALL_PROXY: http://127.0.0.1:9
+        run: python -m pytest tests/test_privacy.py -q
+
+  corpus-e2e:
+    name: Pipeline corpus e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: 移除本地镜像配置（CI 用官方 crates.io）
+        run: rm -f .cargo/config.toml
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 分支快照
+        with:
+          toolchain: stable
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-e2e-${{ hashFiles('**/Cargo.lock') }}
+      # corpus_e2e 在缺少 sidecar/.venv 时会自动跳过（测试内逻辑保留）；
+      # CI 显式创建 venv，确保真正执行而不是静默跳过。
+      - name: 创建 sidecar venv（锁文件 + 哈希校验）
+        run: |
+          python -m venv sidecar/.venv
+          sidecar/.venv/bin/python -m pip install --require-hashes -r sidecar/requirements-dev.lock
+      - name: cargo test corpus_e2e
+        run: cargo test -p anonymizer-pipeline --test corpus_e2e --locked -- --nocapture
+
+  supply-chain:
+    name: 供应链（隐私策略 / 许可证 / SBOM）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: 移除本地镜像配置（CI 用官方 crates.io）
+        run: rm -f .cargo/config.toml
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 分支快照
+        with:
+          toolchain: stable
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - name: Network policy check (zero-exfil build-time audit)
+        run: bash scripts/check-network-policy.sh
+      - name: 安装 Python 构建依赖（锁文件，供许可证扫描读取元数据）
+        run: |
+          python -m venv sidecar/.venv
+          sidecar/.venv/bin/python -m pip install --require-hashes -r sidecar/requirements-build.lock
+      - run: npm ci
+      - name: 许可证合规检查 + SBOM
+        run: python3 scripts/licenses.py --check-only --sbom-dir dist/sbom
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom
+          path: dist/sbom/*.cdx.json

@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pydantic
+# Doc parsing & de-identification rewrite
+pypdfium2        # PDF text/bbox extraction (BSD-3-Clause)
+pikepdf          # PDF content-stream removal + metadata cleanup (MPL-2.0)
+python-docx      # DOCX parsing & rewrite (MIT)
+openpyxl         # XLSX parsing & rewrite (MIT)
+# Chinese NER detection (ONNX CPU inference; model files in models/ner/, no external calls at runtime)
+onnxruntime      # ONNX inference (MIT)
+tokenizers       # fast tokenizer.json loading (Apache-2.0)

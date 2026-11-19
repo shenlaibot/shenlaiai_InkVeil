@@ -1,0 +1,11 @@
+墨隐 InkVeil (AnonKit)
+Copyright 2026 shenlai
+
+Licensed under the AnonKit Custom License (see LICENSE):
+free for personal learning and non-commercial use; any commercial use
+requires a commercial license from the author.
+
+This product bundles or depends on third-party software under their own
+licenses (including MPL-2.0 components such as pikepdf, PDFium and its
+bundled libraries, ONNX Runtime). See DEPENDENCIES.md and
+THIRD-PARTY-NOTICES.md.

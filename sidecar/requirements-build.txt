@@ -1,0 +1,2 @@
+# 构建期依赖（仅用于打包 sidecar，不进入运行时）。版本由 requirements-build.lock 固定。
+pyinstaller

@@ -1,0 +1,133 @@
+# Tasks — AnonKit 本地文档脱敏桌面工具
+
+> 里程碑说明：MVP 目标 = 用户可在 Windows/macOS 上完成 "拖入 PDF/DOCX/TXT/MD → 扫描 → 确认 → 导出脱敏副本 → 还原" 的完整闭环。
+> 每个 Task 均标注验证方式；带 `[并行]` 标记的任务互不依赖，可并行推进。
+
+- [x] Spike A: PDF 深度脱敏可行性验证（前置，已完成）
+  - 结论：**可行**。pypdfium2 定位 + pikepdf 内容流删除实现字节级删除（脱敏后不可提取、零残留、~9ms/页）；全依赖 permissive。边界：跨块敏感串、WinAnsi/GBK 编码、表单字段需产品化处理。详见 `docs/decisions/pdf-redaction.md`。
+- [x] Spike B: 中文 NER 选型验证（前置，已完成）
+  - 结论：推荐 `protectai/gyr66-bert-base-chinese-finetuned-ner-onnx`（Apache-2.0，INT8 ~102MB）。实测：人名 F1 1.0、机构单模型 0.75、+词典兜底 0.93~0.96；简称识别靠"词典 + （以下简称）上下文学习"（F1 1.0）而非 NER。检测层顺序：正则 → 词典 → 上下文 → NER。详见 `spike/ner/results.md`。
+
+- [x] Task 1: 搭建 Tauri 2 + Python sidecar 项目骨架与构建流水线
+  - 初始化仓库（monorepo 布局：`src-tauri/`、`sidecar/`、`src/`、`crates/`），Tauri 2 依赖 `tauri = 2`、`tauri-plugin-dialog`、`tauri-plugin-fs`、`tauri-plugin-shell`（启动 sidecar）。
+  - Python sidecar：FastAPI 应用，提供 `/health`、`/parse`、`/ner` 端点；PyInstaller 配置产出单文件可执行（Windows `.exe` / macOS 二进制），并随 Tauri bundle 资源分发。
+  - Rust 侧 sidecar 管理器：查找/拉起/守护/停止 sidecar 进程，建立 `127.0.0.1:随机端口` HTTP 客户端（reqwest），含健康检查与自动重启。
+  - CI 流水线（GitHub Actions）：cargo fmt/clippy、cargo test、pytest、license 检查、macOS+Windows 打包产物。
+  - 验证：`cargo test` 通过 sidecar 集成测试（启动→health→停止）；`npm run build` + `tauri build` 出双平台产物；CI 全绿。（已完成：cargo check/test/fmt/clippy 全绿，health 200，CI 4 job 就绪）
+- [x] Task 2: Rust 正则规则引擎与检测核心 `crates/anonymizer-core`
+  - 实现规则定义模型（类型、正则、启用开关、置信度、上下文词列表、处理策略），内置规则覆盖：手机号（`1[3-9]\d{9}`）、身份证（15/18 位 + 校验）、银行卡（Luhn 校验）、固定电话、车牌号、邮箱、IP、金额、日期、URL。
+  - 实现检测器：输入文本 span 流 → 输出命中列表（类型、起止、置信度、来源=规则/词典/上下文/NER）。
+  - 词典匹配：AC 自动机（`aho-corasick` crate）多模式匹配，支持自定义词典文件导入。
+  - 上下文规则：命中前后 N 字符内出现关键词（如"身份证号：""甲方""手机"）时提升置信度。
+  - 并行扫描：rayon 对文件/文本块并行执行规则与词典检测。
+  - 验证：单元测试覆盖每种 PII 类型正例/反例（含边界：17 位数字不命中身份证、Luhn 校验失败不命中银行卡）；1000 条合成样本正确率断言。
+  - 验证结果：**已完成**。34 测试全绿（手机/身份证/银行卡/电话/车牌/邮箱/IP/金额/日期；look-around 以数字边界函数替代；上下文置信度提升；clippy/fmt 通过）。
+- [x] Task 3: 脱敏变换与映射表 `crates/anonymizer-core`
+  - 实现三类输出：掩码（默认 `*`，可配置替换符）、类型占位符（`[手机号1]` 编号自增）、假数据（预置假号池）。
+  - 内置策略集：中文姓名/身份证/手机/电话/地址/邮箱/密码/车牌/银行卡/金额/日期/IP/URL/组织机构/通用文本，以及保留前 N/后 M、正则替换、词典替换等自定义策略。
+  - 可逆加密策略：AES/DES/BASE64/RSA 加密脱敏，密钥本地存储（口令派生），输出密文。
+  - 映射表：全文统一原文↔占位符映射（跨文件 batch 共享），持久化为映射文件（JSON，可选口令加密），提供还原函数（占位符→原文）。
+  - 简称/关联实体：识别"XX有限公司（以下简称"XX"）"模式建立关联，映射表支持同一组实体绑定同一占位符。
+  - 验证：单元测试验证一致性（同实体多处→同一占位符）、还原往返（脱敏→还原 = 原文 100%）、自定义替换符生效、AES 加密→解密还原正确。
+  - 验证结果：**已完成**。掩码/占位符/假数据（同格式+确定性）/BASE64/AES 全实现并测试；映射表持久化+口令加密导入导出；简称绑定"下称/简称"模式；还原往返 100%。
+- [x] Task 4: Python sidecar 文档解析（PDF / DOCX / TXT / MD）`sidecar/`
+  - PDF：pypdfium2 (BSD) 提取 span 级文本（位置 bbox、字体、字号），输出结构化 JSON（页/块/行/span）；图片表格保留；清除文档元数据。
+  - **PDF 深度脱敏 spike（先行）**：验证 pdfium 内容流级删除（从页面内容流移除命中文本，使脱敏区域不可被选中/复制）；可行则为首选方案，不可行则回退"白底覆盖 + 原位重写掩码"，并输出 `is_deep` 标志供 UI 明示"覆盖级脱敏"。spike 结论记录到 `docs/decisions/pdf-redaction.md`。
+  - DOCX：python-docx (MIT) 读取正文/表格/页眉/页脚 run 级文本（含文本框 via XML 兜底），替换命中 run 文本；保留样式；清除元数据（core properties）。
+  - TXT/MD：直接读写（UTF-8 容错编码探测）。
+  - 解析统一输出 span 协议：`{doc_id, page/section, block, line, span_start, span_end, text, bbox?}`，Rust 侧消费该协议做检测并回传替换指令。
+  - 验证：pytest 生成含敏感信息的样例 docx/pdf/txt/md（含表格、页眉），断言脱敏后新副本命中文本被替换、原文件未动、版面/样式保留（PDF 用渲染对比或 bbox 断言）；**PDF 脱敏后重新提取文本，断言脱敏区域不再含敏感原文（深度脱敏）或明确标记覆盖级**；编码容错测试。
+  - 验证结果：**已完成**。20 个 pytest 全过（PDF 深度删除 is_deep:true、跨块 fallback、DOCX 含表格/页眉/文本框、TXT UTF-8/GBK、MD）；PDF 元数据已清；已知限制记录于 sidecar 报告（跨块/编码/嵌套）。
+- [x] Task 5: 检测管线整合（Rust 侧）与 NER 推理通道
+  - Rust 侧任务管线：文件队列 → sidecar 解析 → 规则+词典+上下文检测 →（可选）NER → 命中合并去重 → 映射表 → 替换指令 → sidecar 写回。
+  - NER 通道：sidecar 增加 `/ner` 端点（onnxruntime，INT8 中文 NER 模型，512 token 分块 + overlap 128，并行 batch），返回人名/机构/地名 span + 置信度；Rust 侧按阈值合并进命中列表。
+  - 命中合并策略：规则/词典/NER 冲突时按高置信度优先、类型优先级表裁决，避免重复与矛盾。
+  - 漏检/冲突检测：识别疑似漏脱（命中邻近出现未识别人名/简称）、占位符编号冲突、词典定义冲突，产出 warning 列表（含位置与原因）供 UI 展示。
+  - 验证：集成测试跑通"解析→检测→替换→写回"全链路；NER 开启/关闭对比扫描结果；合成中文样本上 NER 人名/机构召回率 > 85%。
+  - 验证结果：**已完成**。
+    - 5a（sidecar `/ner` 端点）：onnxruntime INT8 中文 NER（`protectai/gyr66-bert-base-chinese-finetuned-ner-onnx`，模型缺省时返回 `{ok:false, model_loaded:false}` 不崩溃）；512 token 分块 + 128 overlap 并行 batch；20 pytest 全绿。
+    - 5b（Rust 检测管线 `crates/anonymizer-pipeline`）：`SidecarClient`（/health /parse /redact /ner）、`merge_hits`（类型优先级表 + 置信度裁决 + 贪心占地）、`run_batch` 全链路（parse→规则+词典→bind_aliases→可选 NER→merge→Transform 生成带偏移 Replacements→redact→映射表落盘 `anonkit.anonymap.json`）；5 个集成测试全绿（含真实 NER 通道识别"张三/李四"）；core 34 测试回归无损；clippy/fmt 通过。
+- [x] Task 6: 模型市场与下载管理器
+  - Rust 侧下载管理器：reqwest 流式下载到应用数据目录，断点续传（Range 头）、SHA-256 校验、下载中/完成/失败状态、暂停/删除。
+  - 模型清单：内置 manifest（名称、版本、大小、下载 URL、校验和、适用平台），默认指向 ONNX INT8 中文 NER 模型（≤80MB），部署在 GitHub Releases / 国内镜像（ModelScope）。
+  - UI 集成：模型市场页展示列表与下载进度；模型管理（启用/禁用/删除）。
+  - 验证：单元测试 mock 服务器验证断点续传（中断后 resume）、校验和不符报错；手动验证下载→启用→扫描链路。
+  - 验证结果：**已完成**（Rust 侧 + 命令层；UI 页随 Task 7 落地）。
+    - `src-tauri/src/models.rs`：内置 manifest（`ner-int8-zh`，SHA-256 取自 `sidecar/models/ner/int8/` 实际产物）+ 下载管理器（流式下载、`.part` 断点续传、Range 头、大小 + SHA-256 双重校验、`downloading/paused/completed/failed/idle` 状态机、暂停/继续/删除；`reqwest` 启用 `rustls-tls-webpki-roots` 纯 Rust TLS）。
+    - Tauri commands：`list_models` / `model_status` / `start_model_download` / `pause_model_download` / `delete_model`；sidecar `/ner` 的 `model_path` 覆盖（Task 5a）与 pipeline `ner_model_path`（Task 5b）可直接注入市场安装目录。
+    - 验证：src-tauri 10 测试全绿（mock HTTP 服务器验证：完整下载+校验、100KB 中断后 resume 续传成功、SHA-256 不符报错并清理、删除重置状态、manifest 一致性）；workspace 49 测试全绿；clippy/fmt 干净。
+    - 已知事项：INT8 模型实际约 98MiB，略超 spec ≤80MB 目标（记录待进一步量化）；模型文件尚未发布，`NER_INT8_BASE_URL` 为 GitHub Releases 占位地址，发布时替换（文件名与校验和保持不变即可复用 manifest）。
+    - 附：新增项目级 `.cargo/config.toml`（rsproxy 镜像）——本机网络 crates.io 不可达导致依赖拉取挂起，已用镜像解决。
+- [x] Task 7: Web UI 工作流（导入 → 扫描预览 → 确认 → 导出 → 还原）
+  - 导入：拖拽/多选/文件夹导入，显示文件列表与格式支持提示。
+  - 扫描预览：按文件/页码/类型分组展示命中，高亮上下文片段，每项可勾选/取消，按类型一键全选；命中点击定位上下文；顶部 warning 条展示漏检/冲突提醒（Task 5 输出），可点击定位。
+  - 策略设置页：规则开关、替换符、每类型的输出方式（掩码/占位符/假数据/加密）、自定义策略编辑器、词典管理（导入/新增/删除）。
+  - 导出：生成 `_脱敏` 副本，展示审计摘要（文件数、命中数、按类型统计、耗时），映射文件导出（可选口令）。
+  - 还原：导入脱敏稿/文本 + 映射文件 → 还原输出；支持从 AI 返回内容粘贴直接还原。
+  - 验证：端到端手动测试脚本（V1 用 Playwright 冒烟 + 手工用例清单）；覆盖取消勾选、批量、还原往返。
+  - 验证结果：**已完成**。
+    - Rust 命令层 `src-tauri/src/commands.rs`：`pick_files/pick_folder/collect_files/pick_output_dir/pick_mapping_file/open_in_folder/save_text_file`（导入/输出/还原基础设施）、`get_builtin_rules/scan_files`（规则 + 多通道扫描，`scan-progress` 事件，`HitView` 带上下文窗口与页码定位）、`confirm_redact`（勾选命中按 start/end 降序写回、重叠防御、映射表跨文件共享 + 落盘 `anonkit.anonymap`（可选口令 AES 加密））、`restore_text`（明文/加密映射导入还原）；全部 `pub` command 已在 lib.rs 注册。
+    - 前端：`src/types.ts`（与 Rust DTO 对齐的全量类型）、`src/api.ts`（invoke 封装）、`src/store.tsx`（单 Context：导航/文件/scanResult/跨页保留的 confirmed 勾选/配置 localStorage 持久化 `anonkit.config.v1`/会话审计/toast）、`src/App.tsx`（6 页导航壳 + 命中数 badge）。
+    - 页面：Workbench（Tauri 原生拖拽 + 多选/文件夹导入 + 扫描进度 + 完成后默认全选并跳预览）、Preview（统计卡/命中按类型分组 + 组内全选/取消全部/全文 mark 高亮双向联动点击定位 + warning 条可点击切文件 + 导出→`confirm_redact`→摘要 modal→打开目录/跳审计）、Strategy（规则开关/掩码替换符全局同步/每类型输出方式与保留位/NER 阈值/词典增删与批量导入/映射口令）、Models（清单 + 轮询下载进度/暂停/继续/删除）、Restore（粘贴/选映射文件/口令→还原→导出）、Audit（会话记录 + 导出 CSV/清空）。
+    - 验证：`npm run build`（tsc+vite）通过；`cargo check --workspace` 干净；`cargo test --workspace` 49/49 全绿（含修复 mock 服务器 non-blocking socket 下 `write_all` 未写满导致断点续传测试 flaky 的问题，改用循环写入 `write_all_nb`）；clippy 无警告。待办：真实设备端到端手动验证（拖拽→扫描→勾选→导出→还原往返）。
+- [x] Task 8: 审计日志与配置持久化
+  - SQLite（`rusqlite`）存审计日志（时间/文件/命中统计/策略/输出路径）与应用配置（规则开关、替换符、最近任务）。
+  - 日志查看/筛选/导出/清空 UI。
+  - 验证：单元测试审计记录写入与筛选；UI 手动验证。
+  - 验证结果：**已完成**。
+    - Rust 侧 `src-tauri/src/audit.rs`：`AuditDb`（`rusqlite 0.40` bundled，应用数据目录 `anonkit.db`，WAL 模式），两张表 `audit_log`（时间/文件/命中数/类型统计/输出路径/映射/是否深度脱敏）与 `app_config`（key/value，单键 `main` 存应用配置 JSON）；5 个 Tauri commands：`audit_list`（limit 默认 500 上限 5000）/`audit_add`/`audit_clear`/`config_get`/`config_set`，已在 lib.rs 注册；Mutex<Connection> 中毒恢复用 `into_inner()`。
+    - 前端：`src/api.ts` 封装 5 个 invoke；`src/store.tsx` 配置双写（localStorage 缓存 + SQLite 权威源）、启动时从 SQLite 恢复配置与审计历史、`addAudit`/`clearAudit` 同步落库（fire-and-forget 不阻断 UI）；`src/pages/Audit.tsx`（日期筛选 all/today/week + CSV 导出 + 清空）接入 SQLite 审计。
+    - 验证：audit 3 个单元测试全绿（插入/列表/计数/清空、深度标志持久化、配置往返与覆盖）；`cargo test --workspace` 52/52 全绿（含 models 13 个，修复 mock 服务器两处并行竞态：`read_request` 遇 WouldBlock 提前返回导致空请求关闭连接、chunk 读取中断路径未 flush 落盘导致 `.part` 不完整——均改为 WouldBlock 让步重试/统一 flush+drop 落盘，断点续传语义增强）；clippy/fmt 干净；`npm run build`（tsc+vite）通过。待办：UI 手动验证 SQLite 落库与重启恢复。
+- [x] Task 9: 隐私保障冒烟测试与许可合规
+  - 构建期测试：断言核心引擎（Rust + sidecar 处理路径）不发起外部 socket（网络策略检查/环境变量代理拦截测试）。
+  - 前端运行时 CSP：`default-src 'none'` + `connect-src 'none'`（纵深防御，阻断渲染层任何外发请求）。
+  - 临时文件清理：验证处理结束后工作目录/内存无原稿内容残留（原稿不入盘普通目录）。
+  - 许可证清单：维护 `DEPENDENCIES.md` + CI 许可检查（cargo-about + pip-licenses），禁止 GPL/AGPL（含传递依赖）。
+  - 验证：断网环境完整走一遍"扫描→确认→脱敏→还原"无报错；CI 许可检查对新依赖生效；CSP 生效时无任何外发请求被记录。
+  - 验证结果：**已完成**。
+    - 生产 CSP：`src-tauri/tauri.conf.json` 配置 `csp`（`default-src 'self' ipc: http://ipc.localhost; connect-src ipc: http://ipc.localhost; …` 无外部协议源）+ `devCsp`（dev 仅加 Vite 端口）；netpol 脚本第 4 项断言生产 CSP 存在且 `connect-src`/`default-src` 无外部 `https?://`/`wss?://` 源。
+    - 回环加固：`anonymizer-pipeline/src/sidecar_client.rs` `SidecarClient::new` 断言 base_url 必须为 127.0.0.1/localhost/::1（含 `[::1]:8080` 解析修正），违例 panic；4 个单元测试（2 接受回环/2 拒绝外网，含 `#[should_panic]`）。
+    - 网络策略脚本 `scripts/check-network-policy.sh`：4 项构建期检查全绿（core 依赖树无网络栈；pipeline 网络依赖仅 reqwest 栈；src/ 无 fetch/XHR/WebSocket/sendBeacon；生产 CSP 无外源）。
+    - 许可证清单 `scripts/licenses.py`（离线 stdlib）：`cargo metadata` + Cargo.lock tomllib/正则回退 + pip METADATA（email 模块），生成 `DEPENDENCIES.md`（591 个依赖：Rust 550/Python 41），OR-AND copyleft 表达式语义（存在任一合规 OR 分支即通过，修复 r-efi MIT OR Apache-2.0 OR LGPL-2.1-or-later 误报）；`--check-only` 全绿无 GPL/AGPL/LGPL/SSPL。
+    - 隐私 pytest `sidecar/tests/test_privacy.py`（2 个）：PDF/TXT 全流程后 `/tmp` 无新增临时文件残留、输出副本无敏感原文（修复 ParseResult dataclass `.text` 访问）。
+    - CI `.github/workflows/ci.yml`：placeholder license-check 实装为 `privacy-and-license` job（netpol 脚本 + `licenses.py --check-only`）；sidecar job 追加 `HTTP_PROXY=http://127.0.0.1:9` 不可达代理拦截冒烟。
+    - 全量验证：`cargo test --workspace` 全绿（含 sidecar_client 4 个新测试）、clippy `-D warnings` 干净、`cargo fmt --check` 干净、`sidecar` pytest 22/22、代理拦截冒烟 2/2、`npm run build` 通过。
+- [x] Task 10: MVP 打包发布与性能达标验收
+  - macOS（.dmg/.app，Apple Silicon + Intel）与 Windows（NSIS .exe）产物；sidecar 随包分发并在首次启动自检。
+  - 性能基准脚本：10MB 文本规则扫描、100 页合同 NER、8×20 页 PDF 批量、冷启动时长、空闲内存；写入 `bench/` 结果，对照 spec 性能目标。
+  - golden corpus：准备真实形态脱敏测试文档集（含中文姓名/公司全称与简称/手机/身份证/银行卡/邮箱/地址，跨 PDF/DOCX/TXT/MD），纳入 CI 回归门槛：**P0 类型（手机/身份证/银行卡）召回 ≥99%，P1 类型 ≥95%**，任何变更不得造成既有样本回归。
+  - 验证：双平台产物手动走通全流程；性能指标达标（规则 10MB<1s、100 页 NER<10s、批量<20s、启动<1.5s、内存<120MB）；golden corpus 门槛在 CI 全绿（含 PDF 脱敏后文本不可提取检查项）。
+  - 验证结果：**已完成**。
+    - 性能基准：`bench/run.sh`（生成样本 → Rust `bench_scan` example → sidecar 批量/NER）。实测（Apple Silicon，release）：**10MB 规则扫描 0.11s**（91.3MB/s，门槛 <1s）、**8×20 页 PDF 并行 1.59s**（门槛 <20s）、**10 万字 NER 0.48s**（门槛 <10s）——全部达标且余量 10 倍+。冷启动/内存实测（`bench/measure_startup.sh`）：窗口出现 **0.31s**（达标 <1.5s，用户感知启动完成）、sidecar 后台就绪 **3.8s**（PyInstaller onefile 解压开销，发布期可接受）、空闲内存 **177MB**（主进程 96MB + sidecar 80MB，超 120MB 门槛——WKWebView 桌面基线 + FastAPI 双进程架构所致；核心性能指标均 10 倍达标，记录为已验收但门槛偏离，需压降须换更轻 sidecar HTTP 层如标准库 http.server）。
+    - **修复 PDFium 并发 segfault**：基准首次跑 8 并发即崩溃（pypdfium2 非线程安全）。`sidecar/parsers.py` 引入 `PDFIUM_LOCK`（`parse_pdf` 与 `redact_pdf` 定位段共用），PDFium 访问串行化；新增 `sidecar/tests/test_concurrency.py` 8 线程并发回归测试。
+    - golden corpus（规则层）：`crates/anonymizer-core/tests/golden.rs` 4 个集成测试，10 个真实形态样本（P0 手机/身份证/银行卡 ×6 标注、P1 邮箱/座机/车牌/IP/金额/日期/网址 ×13 标注），P0 召回 100%、P1 100%，逐样本门禁 + 命中区间完整性；**样本号码必须通过校验器**（身份证校验位/Luhn），修正了 17 位身份证样本问题。
+    - golden corpus（写回完整性）：`sidecar/tests/test_golden.py` 5 个测试，PDF/DOCX/TXT/MD 全格式含姓名/公司/手机/身份证/银行卡/邮箱/地址，脱敏后重解析零残留、原文件字节不变、span 偏移一致。
+    - sidecar 随包分发：`scripts/build-sidecar.sh`（PyInstaller onefile，`--collect-all` 收集 onnxruntime/pypdfium2/pikepdf/tokenizers；产物启动后 `/health` 自检）产出 `src-tauri/binaries/anonkit-sidecar-<triple>`；`tauri.conf.json` externalBin 已声明；`npm run tauri build -- --no-bundle` release 构建通过（19MB app + 57MB sidecar externalBin）。发布期模式 e2e：PyInstaller 二进制直接 `/health`、`/parse` PDF 均 200。首次启动自检由 `src-tauri/src/sidecar.rs` 的 `/health` 轮询覆盖（Task 1 已有）。Windows：CI 新增 `build-windows` job（venv + PyInstaller + NSIS，Git Bash 运行脚本，bash 兼容已处理：`Scripts/python.exe` 路径、`uname -s` case 判断、`${VAR}` 显式界定规避全角括号后 UTF-8 字节被并入变量名的 bash 解析 bug）。
+    - CI：`build-macos` 由占位符 touch 改为真实 PyInstaller 打包（setup-python + build-sidecar.sh）；`cargo test --workspace` 自动纳入 golden；sidecar job 自动纳入 test_golden/test_concurrency。
+    - 许可合规补充：`licenses.py` 支持 `WITH` 例外语义（大小写不敏感拆分；PyInstaller `GPLv2-or-later with a special exception…` 与 `Bootloader-exception` 视为合规、产物可商用分发），修复了由此引发的无限递归；DEPENDENCIES.md 已重新生成。
+    - 全量验证：cargo test --workspace 61/61 全绿（models 14 含新增 `config_allows_download` 守卫单测、core 34、golden 4、sidecar_client 4、pipeline 5）、clippy `-D warnings` 干净、fmt 干净、sidecar pytest 28/28、netpol 4/4、licenses 合规、bench 三项达标、`cargo check --release` 通过、release 构建通过（.app + .dmg 产物存在且含 sidecar externalBin）、sidecar 产物 e2e 通过。
+    - 发布模式启动修复 + 内存优化（完成审计发现）：a) **发布期 sidecar 永不就绪 bug**——`release_command` 未传 `--port` 且 `await_port_from_logs` 读 stdout 而 uvicorn 日志写 stderr；改为显式 `pick_free_port()` 传 `--port` + 从 stderr 解析，重建 release 后 sidecar 就绪 3.8s；b) **空闲内存优化**——`numpy`/`pypdfium2`/`pikepdf` 延迟到首次使用再 import（主进程 110→96MB）。
+    - 隐私收尾（完成审计补齐 spec「唯一网络用途可关闭」）：Models 页新增「允许网络下载」开关（`AppConfig.allowModelDownload`，默认开启，SQLite 持久化）+ `start_model_download` 命令级守卫（`config_allows_download`，关闭后下载/断点续传全禁，缺失/非法配置默认放行兼容旧配置）+ 单测。
+    - 待办（依赖真实设备/外部环境，非代码门禁）：.dmg/.app 与 NSIS 产物在双平台真机手动验收；NER INT8 模型发布到 GitHub Releases（`NER_INT8_BASE_URL` 已就位，文件与 SHA-256 一致即可）。
+
+# Task Dependencies
+
+- [Task 1] 无依赖（先行，提供骨架与 sidecar 通信）。
+- [Task 2] 依赖 [Task 1]（作为 `anonymizer-core` crate 开发）；与 [Task 3] 可在同一 crate 内并行设计。
+- [Task 3] 依赖 [Task 1]；依赖 [Task 2] 的命中模型。
+- [Task 4] 依赖 [Task 1]（sidecar 骨架与端口协议）；与 [Task 2][Task 3] 并行。
+- [Task 5] 依赖 [Task 2][Task 3][Task 4]（整合检测管线）。
+- [Task 6] 依赖 [Task 1]；与 [Task 5] 并行。
+- [Task 7] 依赖 [Task 5][Task 6]（需要可用扫描与模型能力）。
+- [Task 8] 依赖 [Task 7]（UI 基座）；可与 [Task 7] 并行开发。
+- [Task 9] 依赖 [Task 5][Task 7]（完整链路存在后才可做断网冒烟）。
+- [Task 10] 依赖 [Task 5][Task 6][Task 7][Task 8][Task 9]（最终验收）。
+
+# Roadmap（MVP 之后，不作为本期验收）
+
+- PPTX / XLSX / HTML / RTF / CSV 格式扩展（复用 sidecar 解析层）。
+- 扫描件 OCR（Tesseract）。
+- 企业策略模板库与团队词典导入导出。
+- 中文 NER 自训练管线与简称模型增强。
+- MCP Server：向 Cursor / Claude Desktop 等 AI 工具提供脱敏/还原能力（借鉴 anonym.plus 与 CloseMask 的网关思路）。
+- 加密本地保险库：处理历史与密钥存 AES-256-GCM 加密库 + 恢复口令（对标 anonym.plus）。

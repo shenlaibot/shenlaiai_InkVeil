@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AnonKit - 本地文档脱敏工具（界面原型）</title>
+<style>
+  :root {
+    --primary: #2563EB; --primary-hover: #1D4ED8; --primary-light: #EFF6FF;
+    --bg: #F3F4F6; --card: #FFFFFF; --border: #E5E7EB; --border-strong: #D1D5DB;
+    --text: #111827; --text-2: #4B5563; --text-3: #9CA3AF;
+    --success: #059669; --success-bg: #ECFDF5; --warn: #D97706; --warn-bg: #FFFBEB;
+    --danger: #DC2626; --radius: 10px;
+    --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--text); font-size: 14px; -webkit-font-smoothing: antialiased;
+  }
+  #app { display: flex; height: 100vh; overflow: hidden; }
+
+  /* 顶部标题栏 */
+  #titlebar {
+    position: fixed; top: 0; left: 0; right: 0; height: 48px; background: #fff;
+    border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 16px; z-index: 100;
+  }
+  #titlebar .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; }
+  #titlebar .brand .tag { font-size: 11px; font-weight: 500; color: var(--text-3); border: 1px solid var(--border-strong); border-radius: 4px; padding: 1px 6px; }
+  #titlebar .spacer { flex: 1; }
+  #titlebar .net-status {
+    display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2);
+    background: var(--success-bg); border: 1px solid #A7F3D0; border-radius: 999px; padding: 3px 10px;
+  }
+  #titlebar .net-status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); }
+  #titlebar .icon-btn { width: 30px; height: 30px; border: none; background: transparent; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-2); }
+  #titlebar .icon-btn:hover { background: #F3F4F6; }
+
+  /* 侧边栏 */
+  #sidebar {
+    width: 216px; min-width: 216px; margin-top: 48px; background: #fff;
+    border-right: 1px solid var(--border); padding: 14px 10px; display: flex; flex-direction: column;
+  }
+  #sidebar .nav-item {
+    display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px;
+    color: var(--text-2); cursor: pointer; font-size: 13.5px; margin-bottom: 2px; user-select: none;
+  }
+  #sidebar .nav-item svg { flex-shrink: 0; }
+  #sidebar .nav-item:hover { background: #F3F4F6; color: var(--text); }
+  #sidebar .nav-item.active { background: var(--primary-light); color: var(--primary); font-weight: 600; }
+  #sidebar .nav-item .badge { margin-left: auto; font-size: 11px; background: var(--primary); color: #fff; border-radius: 999px; padding: 1px 7px; font-weight: 600; }
+  #sidebar .footer-note { margin-top: auto; padding: 10px 12px; font-size: 11px; color: var(--text-3); border-top: 1px solid var(--border); line-height: 1.6; }
+
+  /* 内容区 */
+  #content { flex: 1; margin-top: 48px; overflow-y: auto; padding: 24px 28px 40px; }
+  .page { display: none; max-width: 1100px; margin: 0 auto; }
+  .page.active { display: block; }
+
+  /* 通用组件 */
+  .page-title { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .page-sub { color: var(--text-2); font-size: 13px; margin-bottom: 20px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .card-h { padding: 14px 18px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 14px; }
+  .card-b { padding: 16px 18px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border-strong);
+    background: #fff; color: var(--text); border-radius: 8px; padding: 8px 16px; font-size: 13.5px;
+    font-weight: 500; cursor: pointer; transition: all .12s;
+  }
+  .btn:hover { border-color: var(--text-3); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .btn.primary:hover { background: var(--primary-hover); }
+  .btn.sm { padding: 5px 10px; font-size: 12.5px; border-radius: 6px; }
+  .btn.ghost { border-color: transparent; background: transparent; }
+  .btn.ghost:hover { background: #F3F4F6; }
+  .hint { font-size: 12px; color: var(--text-3); }
+
+  /* 类型徽标 */
+  .type-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
+  .t-mobile   { color: #1D4ED8; background: #DBEAFE; }
+  .t-idcard   { color: #6D28D9; background: #EDE9FE; }
+  .t-person   { color: #0F766E; background: #CCFBF1; }
+  .t-org      { color: #B45309; background: #FEF3C7; }
+  .t-address  { color: #047857; background: #D1FAE5; }
+  .t-email    { color: #BE185D; background: #FCE7F3; }
+  .t-bankcard { color: #1E40AF; background: #DBEAFE; }
+  .t-phone    { color: #7C2D12; background: #FFEDD5; }
+
+  .toggle { position: relative; width: 34px; height: 20px; background: var(--border-strong); border-radius: 999px; cursor: pointer; transition: .15s; flex-shrink: 0; }
+  .toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: #fff; border-radius: 50%; transition: .15s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+  .toggle.on { background: var(--primary); }
+  .toggle.on::after { left: 16px; }
+
+  /* 工作台 */
+  .drop-zone { border: 2px dashed var(--border-strong); border-radius: 14px; background: #FAFBFC; padding: 44px 20px; text-align: center; cursor: pointer; transition: .15s; }
+  .drop-zone:hover, .drop-zone.drag { border-color: var(--primary); background: var(--primary-light); }
+  .drop-zone .dz-icon { margin-bottom: 10px; color: var(--primary); }
+  .drop-zone .dz-title { font-size: 15px; font-weight: 600; }
+  .drop-zone .dz-sub { color: var(--text-3); font-size: 12.5px; margin-top: 4px; }
+  .drop-zone .dz-formats { margin-top: 14px; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+  .fmt-chip { font-size: 11px; border: 1px solid var(--border-strong); border-radius: 6px; padding: 3px 9px; color: var(--text-2); background: #fff; }
+  .files-table { width: 100%; border-collapse: collapse; }
+  .files-table th { text-align: left; font-size: 12px; color: var(--text-3); font-weight: 500; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  .files-table td { padding: 11px 14px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .files-table tr:last-child td { border-bottom: none; }
+  .file-name { display: flex; align-items: center; gap: 10px; font-weight: 500; }
+  .file-icon { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0; }
+  .fi-pdf { background: #DC2626; } .fi-docx { background: #2563EB; } .fi-md { background: #6B7280; }
+  .status-pill { font-size: 12px; color: var(--text-2); }
+  .status-pill.ready::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); margin-right: 6px; vertical-align: middle; }
+  .status-pill.done { color: var(--success); }
+  .status-pill.done::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--success); margin-right: 6px; vertical-align: middle; }
+  .workbench-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+  .workbench-actions .note { display: flex; align-items: center; gap: 7px; color: var(--text-3); font-size: 12.5px; }
+
+  /* 扫描进度 */
+  .progress-wrap { display: none; margin-top: 16px; }
+  .progress-wrap.show { display: block; }
+  .progress-track { height: 8px; background: #E5E7EB; border-radius: 999px; overflow: hidden; }
+  .progress-fill { height: 100%; width: 0%; background: var(--primary); border-radius: 999px; transition: width .25s; }
+  .progress-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-2); margin-top: 8px; }
+
+  /* 扫描预览 */
+  .stat-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 18px; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); }
+  .stat-card .num { font-size: 22px; font-weight: 700; }
+  .stat-card .lbl { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+  .stat-card.hl { border-top: 3px solid var(--primary); }
+  .preview-layout { display: grid; grid-template-columns: 400px 1fr; gap: 16px; align-items: start; }
+  .hit-group { margin-bottom: 14px; }
+  .hit-group-title { font-size: 12px; font-weight: 600; color: var(--text-2); padding: 6px 8px; display: flex; align-items: center; gap: 8px; }
+  .hit-group-title .count { color: var(--text-3); font-weight: 500; }
+  .hit-item { display: flex; align-items: flex-start; gap: 10px; padding: 9px 10px; border-radius: 8px; cursor: pointer; }
+  .hit-item:hover { background: #F9FAFB; }
+  .hit-item.sel { background: var(--primary-light); outline: 1px solid #BFDBFE; }
+  .hit-item .cb { margin-top: 3px; }
+  .hit-item .body { flex: 1; min-width: 0; }
+  .hit-item .ctx { font-size: 12.5px; color: var(--text-2); line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hit-item .ctx mark { background: #FDE68A; border-radius: 3px; padding: 0 1px; font-weight: 600; color: #92400E; }
+  .hit-item .loc { font-size: 11px; color: var(--text-3); margin-top: 3px; }
+  .hit-checkbox { width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; }
+
+  .doc-preview-card { position: sticky; top: 0; }
+  .doc-preview-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .doc-preview-head .doc-name { font-weight: 600; font-size: 13.5px; }
+  .doc-preview-head .doc-meta { margin-left: auto; font-size: 12px; color: var(--text-3); }
+  .doc-page-num { font-size: 12px; color: var(--text-2); margin: 14px 16px 8px; }
+  .doc-text { padding: 0 16px 16px; line-height: 2; font-size: 14px; color: #374151; }
+  .doc-text .ln { display: block; white-space: pre-wrap; }
+  .doc-text mark { background: #FDE68A; border-radius: 3px; padding: 0 2px; color: #92400E; cursor: pointer; }
+  .alias-callout {
+    margin: 14px 16px; border: 1px solid #FDE68A; background: var(--warn-bg); border-radius: 8px; padding: 10px 12px;
+    font-size: 12.5px; color: #92400E; line-height: 1.7;
+  }
+  .preview-footer { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+  .preview-footer .confirmed { font-size: 13px; color: var(--text-2); }
+
+  /* 策略设置 */
+  .set-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #F3F4F6; gap: 12px; }
+  .setting-row:last-child { border-bottom: none; }
+  .setting-row .lbl { font-size: 13.5px; font-weight: 500; }
+  .setting-row .desc { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+  .mask-preview { font-size: 15px; font-weight: 600; letter-spacing: 1px; font-family: "SF Mono", Menlo, monospace; }
+  .mask-input { width: 60px; text-align: center; border: 1px solid var(--border-strong); border-radius: 6px; padding: 5px; font-size: 14px; }
+  .rules-table { width: 100%; border-collapse: collapse; }
+  .rules-table th { text-align: left; font-size: 12px; color: var(--text-3); font-weight: 500; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .rules-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: middle; }
+  .rules-table tr:last-child td { border-bottom: none; }
+  .rules-table .rule-name { font-weight: 500; }
+  .rules-table .rule-example { font-size: 12px; color: var(--text-3); font-family: "SF Mono", Menlo, monospace; }
+  .select-mini { border: 1px solid var(--border-strong); border-radius: 6px; padding: 4px 8px; font-size: 12.5px; background: #fff; color: var(--text); }
+  .dict-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .dict-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: #F9FAFB; border-radius: 8px; padding: 5px 10px; font-size: 12.5px; }
+  .dict-chip .x { color: var(--text-3); cursor: pointer; font-weight: 700; }
+  .dict-chip .x:hover { color: var(--danger); }
+
+  /* 模型市场 */
+  .model-note { display: flex; gap: 10px; background: var(--primary-light); border: 1px solid #BFDBFE; border-radius: 10px; padding: 12px 14px; font-size: 12.5px; color: #1E40AF; line-height: 1.7; margin-bottom: 16px; }
+  .model-card { display: flex; gap: 16px; padding: 18px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; margin-bottom: 14px; }
+  .model-icon { width: 46px; height: 46px; border-radius: 12px; background: var(--primary-light); color: var(--primary); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .model-info { flex: 1; min-width: 0; }
+  .model-info .m-name { font-weight: 600; font-size: 14px; }
+  .model-info .m-meta { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+  .model-info .m-desc { font-size: 13px; color: var(--text-2); margin-top: 6px; line-height: 1.6; }
+  .model-right { display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between; min-width: 170px; }
+  .model-tag { font-size: 11px; border-radius: 6px; padding: 3px 8px; font-weight: 600; }
+  .model-tag.installed { background: var(--success-bg); color: var(--success); }
+  .model-tag.optional { background: #F3F4F6; color: var(--text-2); }
+  .dl-progress { display: none; width: 100%; margin-top: 10px; }
+  .dl-progress.show { display: block; }
+  .dl-progress .bar { height: 6px; background: #E5E7EB; border-radius: 999px; overflow: hidden; }
+  .dl-progress .bar i { display: block; height: 100%; width: 0%; background: var(--primary); transition: width .3s; }
+  .dl-progress .pct { font-size: 11px; color: var(--text-3); margin-top: 4px; text-align: right; }
+
+  /* 还原 */
+  .restore-steps { display: flex; gap: 12px; margin-bottom: 18px; }
+  .step-chip { flex: 1; border: 1px solid var(--border); background: #fff; border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--shadow); }
+  .step-chip .n { font-size: 11px; font-weight: 700; color: var(--primary); }
+  .step-chip .t { font-size: 13px; font-weight: 600; margin-top: 3px; }
+  .step-chip .d { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+  .restore-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .restore-box { border: 1px solid var(--border); border-radius: var(--radius); background: #fff; overflow: hidden; }
+  .restore-box .rb-h { padding: 11px 14px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .restore-box .rb-h .map-file { margin-left: auto; font-size: 11px; color: var(--text-3); font-weight: 400; }
+  .restore-box textarea { width: 100%; border: none; outline: none; resize: none; padding: 14px; font-size: 13px; line-height: 1.8; font-family: inherit; color: var(--text); min-height: 230px; }
+  .restore-box .out { padding: 14px; font-size: 13px; line-height: 1.8; min-height: 230px; }
+  .restore-box .out .ph { color: var(--primary); font-weight: 600; }
+  .restore-result-note { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--success); margin-top: 12px; }
+
+  /* 审计日志 */
+  .audit-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .audit-table { width: 100%; border-collapse: collapse; }
+  .audit-table th { text-align: left; font-size: 12px; color: var(--text-3); font-weight: 500; padding: 10px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .audit-table td { padding: 11px 14px; border-bottom: 1px solid var(--border); font-size: 13px; white-space: nowrap; }
+  .audit-table tr:last-child td { border-bottom: none; }
+
+  /* 导出成功浮层 */
+  #toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(20px); background: #111827; color: #fff; padding: 10px 18px; border-radius: 10px; font-size: 13px; opacity: 0; transition: all .25s; z-index: 999; pointer-events: none; }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- 顶部标题栏 -->
+  <header id="titlebar">
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="3" stroke="#2563EB" stroke-width="2"/><path d="M7 9h5M7 13h5M7 17h3" stroke="#2563EB" stroke-width="2" stroke-linecap="round"/><path d="M15.5 12.5l3 3M15.5 15.5l3-3" stroke="#2563EB" stroke-width="2" stroke-linecap="round"/></svg>
+      AnonKit <span class="tag">本地脱敏</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="net-status"><span class="dot"></span> 零网络 · 文档不出本机</div>
+    <button class="icon-btn" title="设置" style="margin-left:12px">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </header>
+
+  <!-- 侧边栏 -->
+  <aside id="sidebar">
+    <div class="nav-item active" data-page="workbench">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+      工作台
+    </div>
+    <div class="nav-item" data-page="preview">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      扫描预览 <span class="badge" id="nav-hit-count">42</span>
+    </div>
+    <div class="nav-item" data-page="strategy">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+      策略设置
+    </div>
+    <div class="nav-item" data-page="models">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+      模型市场
+    </div>
+    <div class="nav-item" data-page="restore">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+      还原
+    </div>
+    <div class="nav-item" data-page="audit">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
+      审计日志
+    </div>
+    <div class="footer-note">AnonKit v0.1.0 界面原型<br>Apache-2.0 · 开源</div>
+  </aside>
+
+  <!-- 内容区 -->
+  <main id="content">
+
+    <!-- ============ 页面 1：工作台 ============ -->
+    <section class="page active" id="page-workbench">
+      <div class="page-title">工作台</div>
+      <div class="page-sub">拖入合同、底稿、披露文件，扫描敏感信息并生成脱敏副本。全程本地处理，数据不出本机。</div>
+
+      <div class="drop-zone" id="drop-zone">
+        <div class="dz-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></div>
+        <div class="dz-title">拖入文件或文件夹，或点击选择</div>
+        <div class="dz-sub">可批量选择，支持文件夹递归导入</div>
+        <div class="dz-formats">
+          <span class="fmt-chip">PDF</span><span class="fmt-chip">DOCX</span><span class="fmt-chip">TXT</span><span class="fmt-chip">MD</span>
+          <span class="fmt-chip" style="opacity:.55">PPTX / XLSX · 即将支持</span>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px">
+        <div class="card-h" style="display:flex;align-items:center;gap:10px">
+          待处理文件 <span class="hint">4 个文件 · 共 1.4 MB</span>
+          <span style="flex:1"></span><button class="btn sm ghost">清空列表</button>
+        </div>
+        <table class="files-table">
+          <thead><tr><th>文件</th><th>页数</th><th>大小</th><th>格式</th><th>状态</th><th></th></tr></thead>
+          <tbody>
+            <tr><td><div class="file-name"><span class="file-icon fi-pdf">PDF</span>股权转让协议-北京降本增笑.pdf</div></td><td>23 页</td><td>1.2 MB</td><td><span class="type-badge t-org">PDF</span></td><td><span class="status-pill ready" id="s1">待扫描</span></td><td><button class="btn sm ghost">移除</button></td></tr>
+            <tr><td><div class="file-name"><span class="file-icon fi-docx">DOC</span>劳动合同书-张三个人信息.docx</div></td><td>8 页</td><td>86 KB</td><td><span class="type-badge t-org">DOCX</span></td><td><span class="status-pill ready" id="s2">待扫描</span></td><td><button class="btn sm ghost">移除</button></td></tr>
+            <tr><td><div class="file-name"><span class="file-icon fi-docx">DOC</span>保密协议-项目组.docx</div></td><td>5 页</td><td>64 KB</td><td><span class="type-badge t-org">DOCX</span></td><td><span class="status-pill ready" id="s3">待扫描</span></td><td><button class="btn sm ghost">移除</button></td></tr>
+            <tr><td><div class="file-name"><span class="file-icon fi-md">MD</span>项目讨论纪要.md</div></td><td>-</td><td>3 KB</td><td><span class="type-badge t-org">MD</span></td><td><span class="status-pill ready" id="s4">待扫描</span></td><td><button class="btn sm ghost">移除</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="progress-wrap" id="scan-progress">
+        <div class="progress-track"><div class="progress-fill" id="scan-fill"></div></div>
+        <div class="progress-meta"><span id="scan-msg">正在解析文档…</span><span id="scan-pct">0%</span></div>
+      </div>
+
+      <div class="workbench-actions">
+        <button class="btn primary" id="btn-scan">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          开始扫描
+        </button>
+        <div class="note">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          纯本地规则模式，零网络请求
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 页面 2：扫描预览 ============ -->
+    <section class="page" id="page-preview">
+      <div class="page-title">扫描预览</div>
+      <div class="page-sub">共扫描 4 个文件 · 命中 42 处 · 检测耗时 0.8s · 请勾选确认后导出（演示为子集）</div>
+
+      <div class="stat-row">
+        <div class="stat-card hl"><div class="num" id="stat-total">42</div><div class="lbl">命中总数</div></div>
+        <div class="stat-card"><div class="num" id="stat-confirmed">42</div><div class="lbl">已确认</div></div>
+        <div class="stat-card"><div class="num">4</div><div class="lbl">文件</div></div>
+        <div class="stat-card"><div class="num">7</div><div class="lbl">类型</div></div>
+        <div class="stat-card"><div class="num">0.8s</div><div class="lbl">耗时</div></div>
+      </div>
+
+      <div class="preview-layout">
+        <!-- 左：命中列表 -->
+        <div id="hit-list">
+          <div class="hit-group">
+            <div class="hit-group-title"><span class="type-badge t-phone">固定电话</span> <span class="count">3</span></div>
+            <div class="hit-item sel" data-hi="0"><input type="checkbox" class="hit-checkbox" checked><div class="body"><div class="ctx">联系电话：<mark>010-66889988</mark>（工作日 9:00-18:00）</div><div class="loc">股权转让协议.pdf · 第 1 页</div></div></div>
+            <div class="hit-item" data-hi="1"><input type="checkbox" class="hit-checkbox" checked><div class="body"><div class="ctx">公司总机：<mark>010-66887766</mark> 转 8000</div><div class="loc">股权转让协议.pdf · 第 8 页</div></div></div>
+            <div class="hit-item" data-hi="2"><input type="checkbox" class="hit-checkbox" checked><div class="body"><div class="ctx">联系人：<mark>010-65432100</mark></div><div class="loc">保密协议.docx · 第 2 页</div></div></div>
+          </div>
+          <div class="hit-group">
+            <div class="hit-group-title"><span class="type-badge t-mobile">手机号</span> <span class="count">5</span></div>
+            <div class="hit-item" data-hi="3"><input type="checkbox" class="hit-checkbox" checked><div class="body"><div class="ctx">法定代表人张三，电话 <mark>13800138000</mark></div><div class="loc">股权转让协议.pdf · 第 1 页</div></div></div>
+            <div class="hit-item" data-hi="4"><input type="checkbox" class="hit-checkbox" checked><div class="body"><div class="ctx">联系人李四：<mark>13911112222</mark></div><div class="loc">股权转让协议.pdf · 第 4 页</div></div></div>
+            <div class="hit-item" data-hi="5"><input type="checkbox" class="hit-checkbox" checked><div class="body"><div class="ctx">紧急联络：<mark>13566667777</mark></div><div class="loc">劳动合同书.docx · 第 2 页</div></div></div>
+          </div>
+          <div class="hit-group">
+            <div class="hit-group-title"><span class="type-badge t-idcard">身份证号</span> <span class="count">3</span></div>
+            <div class="hit-item" data-hi="6"><input type="checkbox" class="hit-checkbox" checked><div class="body"><div class="ctx">身份证号：<mark>110101198403201234</mark></div><div class="loc">劳动合同书.docx · 第 1 页</div></div></div>
+            <div class="hit-item" data-hi="7"><input type="checkbox" class="hit-checkbox" checked><div class="body"><div class="ctx">乙方证件号码 <mark>110101198403201234</mark>（重复，共 1 个唯一实体）</div><div class="loc">劳动合同书.docx · 第 3 页</div></div></div>
+          </div>
+          <div class="hit-group">
+            <div class="hit-group-title"><span class="type-badge t-person">人名（NER / 词典）</span> <span class="count">8</span></div>
+            <div class="hit-item" data-hi="8"><input type="checkbox" class="hit-checkbox" checked><div class="body"><div class="ctx">转让方：<mark>张三</mark>，身份证号 110101…</div><div class="loc">股权转让协议.pdf · 第 1 页</div></div></div>
+            <div class="hit-item" data-hi="9"><input type="checkbox" class="hit-checkbox" checked><div class="body"><div class="ctx">受让方 <mark>李四</mark>（以下简称"乙方"）</div><div class="loc">股权转让协议.pdf · 第 2 页</div></div></div>
+          </div>
+          <div class="hit-group">
+            <div class="hit-group-title"><span class="type-badge t-org">公司名（简称联动）</span> <span class="count">9</span></div>
+            <div class="hit-item" data-hi="10" style="outline:1px solid #FDE68A"><input type="checkbox" class="hit-checkbox" checked><div class="body"><div class="ctx"><mark>北京降本增笑有限公司</mark>（以下简称"降本增笑"）</div><div class="loc">股权转让协议.pdf · 第 1 页</div></div></div>
+            <div class="hit-item" data-hi="11"><input type="checkbox" class="hit-checkbox" checked><div class="body"><div class="ctx">…与 <mark>降本增笑</mark> 就股权转让事宜达成如下协议</div><div class="loc">股权转让协议.pdf · 第 2 页 · 关联简称</div></div></div>
+          </div>
+          <div class="hit-group">
+            <div class="hit-group-title"><span class="type-badge t-address">地址</span> <span class="count">4</span></div>
+            <div class="hit-item" data-hi="12"><input type="checkbox" class="hit-checkbox" checked><div class="body"><div class="ctx">注册地址：<mark>北京市朝阳区建国路 88 号 SOHO 现代城 A 座 1208</mark></div><div class="loc">股权转让协议.pdf · 第 1 页</div></div></div>
+          </div>
+          <div class="hit-group">
+            <div class="hit-group-title"><span class="type-badge t-email">邮箱</span> <span class="count">2</span></div>
+            <div class="hit-item" data-hi="13"><input type="checkbox" class="hit-checkbox" checked><div class="body"><div class="ctx">送达邮箱：<mark>zhangsan@jianben.cn</mark></div><div class="loc">股权转让协议.pdf · 第 2 页</div></div></div>
+          </div>
+          <div class="hit-group">
+            <div class="hit-group-title"><span class="type-badge t-bankcard">银行卡号</span> <span class="count">1</span></div>
+            <div class="hit-item" data-hi="14"><input type="checkbox" class="hit-checkbox" checked><div class="body"><div class="ctx">收款账户：<mark>6222 0210 0034 5678 901</mark>（Luhn 校验通过）</div><div class="loc">股权转让协议.pdf · 第 12 页</div></div></div>
+          </div>
+        </div>
+
+        <!-- 右：上下文预览 -->
+        <div class="doc-preview-card card">
+          <div class="doc-preview-head">
+            <span class="file-icon fi-pdf" style="width:28px;height:28px;font-size:10px">PDF</span>
+            <div class="doc-name">股权转让协议-北京降本增笑.pdf</div>
+            <div class="doc-meta">23 页</div>
+          </div>
+          <div class="alias-callout">
+            <b>简称联动识别：</b>检测到"北京降本增笑有限公司"与简称"降本增笑"关联，全文共出现 9 次。勾选后将统一替换为同一占位符，确保后续还原语义一致。
+          </div>
+          <div class="doc-page-num">第 1 页</div>
+          <div class="doc-text">
+            <span class="ln">股权转让协议</span><span class="ln"></span>
+            <span class="ln">转让方：<mark id="m0">张三</mark>，身份证号：110101198403201234，联系电话：13800138000。</span>
+            <span class="ln">受让方：<mark id="m1">北京降本增笑有限公司</mark>（以下简称"降本增笑"）。</span>
+            <span class="ln"></span>
+            <span class="ln">鉴于甲方拟将持有的北京市朝阳区建国路 88 号 SOHO 现代城 A 座 1208 号物业的股权转让给乙方，双方经友好协商，达成如下协议：</span>
+            <span class="ln"></span>
+            <span class="ln">第一条　转让标的</span>
+            <span class="ln">1.1　甲方将其持有的<mark id="m2">降本增笑</mark> 40% 股权（对应注册资本人民币 400 万元）转让给乙方。……</span>
+            <span class="ln"></span>
+            <span class="ln">送达邮箱：zhangsan@jianben.cn；公司总机：010-66889988（工作日 9:00-18:00）。</span>
+          </div>
+          <div class="doc-page-num">第 12 页</div>
+          <div class="doc-text">
+            <span class="ln">7.3　付款方式：乙方应于协议生效后 10 个工作日内，将股权转让价款一次性支付至甲方指定账户：</span>
+            <span class="ln">收款账户：6222 0210 0034 5678 901（开户行：招商银行北京分行建国路支行）。</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="preview-footer">
+        <span class="confirmed">已确认 <b id="confirm-n">42</b>/42 处命中</span>
+        <span style="flex:1"></span>
+        <button class="btn" id="btn-deselect-all">取消全部</button>
+        <button class="btn primary" id="btn-export">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          导出脱敏副本
+        </button>
+      </div>
+    </section>
+
+    <!-- ============ 页面 3：策略设置 ============ -->
+    <section class="page" id="page-strategy">
+      <div class="page-title">策略设置</div>
+      <div class="page-sub">配置检测规则、脱敏输出方式与自定义策略。所有设置仅保存在本机。</div>
+
+      <div class="set-grid">
+        <div class="card">
+          <div class="card-h">脱敏输出</div>
+          <div class="card-b">
+            <div class="setting-row">
+              <div><div class="lbl">掩码替换符</div><div class="desc">用于掩码输出的填充字符</div></div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <input class="mask-input" id="mask-char" value="*" maxlength="1">
+                <span class="mask-preview" id="mask-preview">138****8000</span>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div><div class="lbl">占位符编号</div><div class="desc">同一实体全文共用同一编号，跨文件统一</div></div>
+              <span class="mask-preview" style="font-size:13px">[手机号1] [人名2]</span>
+            </div>
+            <div class="setting-row">
+              <div><div class="lbl">假数据池</div><div class="desc">生成同格式假数据（138xxxx 随机号段）</div></div>
+              <span class="mask-preview" style="font-size:13px;color:var(--success)">可用</span>
+            </div>
+            <div class="setting-row">
+              <div><div class="lbl">映射文件口令保护</div><div class="desc">导出的映射文件（.anonymap）用口令加密</div></div>
+              <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h" style="display:flex;align-items:center;gap:10px">敏感词典 <span class="hint">人名 / 公司 / 项目代号</span><span style="flex:1"></span><button class="btn sm">管理词典</button></div>
+          <div class="card-b">
+            <div class="dict-chips">
+              <span class="dict-chip">张三 <span class="x">×</span></span>
+              <span class="dict-chip">李四 <span class="x">×</span></span>
+              <span class="dict-chip">北京降本增笑有限公司 <span class="x">×</span></span>
+              <span class="dict-chip">降本增笑 <span class="x">×</span></span>
+              <span class="dict-chip">SOHO 现代城 A 座 <span class="x">×</span></span>
+              <span class="dict-chip">墨渊项目 <span class="x">×</span></span>
+              <span class="dict-chip">+ 添加</span>
+            </div>
+            <div style="margin-top:12px;font-size:12px;color:var(--text-3);line-height:1.7">词典条目全文精确匹配（AC 自动机多模式并行），支持从 CSV 批量导入，可用作简称联动的种子词。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="card-h" style="display:flex;align-items:center;gap:10px">内置检测规则 <span class="hint">15 类 · 中文优先</span><span style="flex:1"></span><button class="btn sm ghost">自定义策略 +</button></div>
+        <table class="rules-table">
+          <thead><tr><th style="width:150px">类型</th><th>匹配示例</th><th style="width:130px">输出方式</th><th style="width:120px">保留位</th><th style="width:70px">启用</th></tr></thead>
+          <tbody>
+            <tr><td class="rule-name">手机号</td><td class="rule-example">1[3-9]\d{9}</td><td><select class="select-mini"><option>掩码</option><option>占位符</option><option>假数据</option></select></td><td><input class="mask-input" value="3/4" style="width:52px;font-size:12px"></td><td><div class="toggle on" onclick="this.classList.toggle('on')"></div></td></tr>
+            <tr><td class="rule-name">身份证号</td><td class="rule-example">\d{17}[\dXx]（含校验）</td><td><select class="select-mini"><option>掩码</option><option selected>占位符</option><option>假数据</option></select></td><td><input class="mask-input" value="4/4" style="width:52px;font-size:12px"></td><td><div class="toggle on" onclick="this.classList.toggle('on')"></div></td></tr>
+            <tr><td class="rule-name">银行卡号</td><td class="rule-example">Luhn 校验</td><td><select class="select-mini"><option>掩码</option><option selected>占位符</option><option>假数据</option></select></td><td><input class="mask-input" value="4/4" style="width:52px;font-size:12px"></td><td><div class="toggle on" onclick="this.classList.toggle('on')"></div></td></tr>
+            <tr><td class="rule-name">固定电话</td><td class="rule-example">0\d{2,3}-?\d{7,8}</td><td><select class="select-mini"><option>掩码</option><option>占位符</option><option>假数据</option></select></td><td><input class="mask-input" value="2/4" style="width:52px;font-size:12px"></td><td><div class="toggle on" onclick="this.classList.toggle('on')"></div></td></tr>
+            <tr><td class="rule-name">车牌号</td><td class="rule-example">[京津沪渝冀…][A-Z][A-Z0-9]{5}</td><td><select class="select-mini"><option>掩码</option><option>占位符</option><option>假数据</option></select></td><td><input class="mask-input" value="2/2" style="width:52px;font-size:12px"></td><td><div class="toggle on" onclick="this.classList.toggle('on')"></div></td></tr>
+            <tr><td class="rule-name">电子邮箱</td><td class="rule-example">[\w.+-]+@[\w-]+\.\w+</td><td><select class="select-mini"><option>掩码</option><option>占位符</option><option>假数据</option></select></td><td><input class="mask-input" value="1/2" style="width:52px;font-size:12px"></td><td><div class="toggle on" onclick="this.classList.toggle('on')"></div></td></tr>
+            <tr><td class="rule-name">人名（NER/词典）</td><td class="rule-example">模型 · AC 词典</td><td><select class="select-mini"><option>掩码</option><option>占位符</option><option selected>假数据</option></select></td><td><input class="mask-input" value="1/1" style="width:52px;font-size:12px"></td><td><div class="toggle on" onclick="this.classList.toggle('on')"></div></td></tr>
+            <tr><td class="rule-name">公司名（简称联动）</td><td class="rule-example">…有限公司 + 简称</td><td><select class="select-mini"><option>掩码</option><option selected>占位符</option><option>假数据</option></select></td><td><input class="mask-input" value="2/0" style="width:52px;font-size:12px"></td><td><div class="toggle on" onclick="this.classList.toggle('on')"></div></td></tr>
+            <tr><td class="rule-name">地址</td><td class="rule-example">上下文 + NER</td><td><select class="select-mini"><option>掩码</option><option selected>占位符</option><option>假数据</option></select></td><td><input class="mask-input" value="2/3" style="width:52px;font-size:12px"></td><td><div class="toggle on" onclick="this.classList.toggle('on')"></div></td></tr>
+            <tr><td class="rule-name">金额 / 日期 / IP</td><td class="rule-example">¥ 1,000 / 2024-01-01 / 10.0.0.1</td><td><select class="select-mini"><option>掩码</option><option>占位符</option><option>假数据</option></select></td><td><input class="mask-input" value="0/2" style="width:52px;font-size:12px"></td><td><div class="toggle" onclick="this.classList.toggle('on')"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="card-h" style="display:flex;align-items:center;gap:10px">加密脱敏（可逆） <span class="hint">AES / DES / BASE64 / RSA</span></div>
+        <div class="card-b">
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+            <select class="select-mini"><option>AES-256-GCM</option><option>DES</option><option>BASE64</option><option>RSA-2048</option></select>
+            <span class="hint">密钥由本地口令派生，仅保存在本机密钥库；密文可经还原流程解密。</span>
+            <span style="flex:1"></span>
+            <button class="btn sm">配置密钥</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 页面 4：模型市场 ============ -->
+    <section class="page" id="page-models">
+      <div class="page-title">模型市场</div>
+      <div class="page-sub">本地 NER 小模型为可选增强。不下载任何模型时，规则 + 词典 + 上下文即可完整工作。</div>
+
+      <div class="model-note">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        所有模型推理均在本地 CPU 完成（ONNX Runtime INT8 量化），下载到应用数据目录，可随时禁用或删除。模型文件仅用于本地推理，不上传任何内容。
+      </div>
+
+      <div class="model-card">
+        <div class="model-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6M9 13h6M9 17h3"/></svg></div>
+        <div class="model-info">
+          <div class="m-name">中文 NER · 人名 / 机构名 / 地名</div>
+          <div class="m-meta">v1.0 · ONNX INT8 · 78 MB · 纯 CPU · 支持 512 token 分块并行</div>
+          <div class="m-desc">基于中文预训练模型微调，识别自然人姓名、法人/机构全称与简称、地名。规则模式识别不到的"非标人名、公司简称、项目代号"由它兜底，F1 ≈ 90%。</div>
+        </div>
+        <div class="model-right">
+          <span class="model-tag optional" id="m-tag">未安装</span>
+          <div style="width:100%">
+            <button class="btn sm primary" id="m-btn" style="width:100%;justify-content:center">下载</button>
+            <div class="dl-progress" id="m-progress">
+              <div class="bar"><i id="m-bar"></i></div>
+              <div class="pct" id="m-pct">0%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="model-card" style="opacity:.55;pointer-events:none">
+        <div class="model-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6M9 13h6M9 17h3"/></svg></div>
+        <div class="model-info">
+          <div class="m-name">简称关联增强模型 <span class="hint">规划中</span></div>
+          <div class="m-meta">v0.5 · ONNX INT8 · 41 MB · 纯 CPU</div>
+          <div class="m-desc">专门识别"XX有限公司（以下简称 XX）"的简称绑定关系，与词典联动提升合同类文档召回。</div>
+        </div>
+        <div class="model-right"><span class="model-tag optional">即将上架</span></div>
+      </div>
+    </section>
+
+    <!-- ============ 页面 5：还原 ============ -->
+    <section class="page" id="page-restore">
+      <div class="page-title">还原</div>
+      <div class="page-sub">把脱敏稿交给 AI 或同事后，用映射文件把占位符还原为原文。</div>
+
+      <div class="restore-steps">
+        <div class="step-chip"><div class="n">STEP 1</div><div class="t">导出脱敏副本 + 映射文件</div><div class="d">脱敏时自动生成 .anonymap</div></div>
+        <div class="step-chip"><div class="n">STEP 2</div><div class="t">脱敏稿交给 AI / 协作方</div><div class="d">占位符可读，无敏感信息</div></div>
+        <div class="step-chip"><div class="n">STEP 3</div><div class="t">导入 AI 返回内容，一键还原</div><div class="d">映射文件口令解密后还原</div></div>
+      </div>
+
+      <div class="restore-pair">
+        <div class="restore-box">
+          <div class="rb-h">
+            AI / 协作方返回的内容
+            <span class="map-file"><button class="btn sm ghost">从剪贴板粘贴</button></span>
+          </div>
+          <textarea id="restore-in" placeholder="粘贴 AI 审核意见、协作方批注等文本…">经审查，[公司1]拟收购[人名1]持有的 40% 股权，交易对价为人民币 [金额1] 万元。建议关注以下风险点：
+1. [人名1]提供之身份证件复印件与原件一致；
+2. 付款账户 [银行卡1] 开户信息待核验；
+3. 受让方联系邮箱 [邮箱1] 与工商登记信息一致。</textarea>
+        </div>
+        <div class="restore-box">
+          <div class="rb-h">
+            还原结果
+            <span class="map-file">映射：股权转让协议_映射.anonymap（口令保护）</span>
+          </div>
+          <div class="out" id="restore-out">
+            <span style="color:var(--text-3)">点击"执行还原"查看结果预览…</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:12px;margin-top:16px">
+        <button class="btn primary" id="btn-restore">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+          执行还原
+        </button>
+        <span class="hint">还原仅在本机完成，映射文件不离开本机；还原后可将结果导出为文档。</span>
+        <span style="flex:1"></span>
+        <button class="btn">导出还原文档</button>
+      </div>
+    </section>
+
+    <!-- ============ 页面 6：审计日志 ============ -->
+    <section class="page" id="page-audit">
+      <div class="page-title">审计日志</div>
+      <div class="page-sub">脱敏操作记录仅保存在本机，可追溯"谁在何时处理了什么文件、命中了哪些类型、输出到哪"。</div>
+
+      <div class="audit-toolbar">
+        <select class="select-mini"><option>全部日期</option><option>今天</option><option>最近 7 天</option><option>最近 30 天</option></select>
+        <select class="select-mini"><option>全部文件</option><option>股权转让协议.pdf</option><option>劳动合同书.docx</option></select>
+        <span style="flex:1"></span>
+        <button class="btn sm ghost">导出日志</button>
+        <button class="btn sm ghost">清空日志</button>
+      </div>
+
+      <div class="card">
+        <table class="audit-table">
+          <thead><tr><th>时间</th><th>文件</th><th>命中</th><th>类型分布</th><th>输出</th><th>映射</th></tr></thead>
+          <tbody>
+            <tr><td>2026-08-10 14:32</td><td>股权转让协议-北京降本增笑.pdf</td><td>23 处</td><td>手机×5 身份证×2 人名×6 公司×7 地址×3</td><td>股权转让协议_脱敏.pdf</td><td>已导出</td></tr>
+            <tr><td>2026-08-10 14:31</td><td>劳动合同书-张三个人信息.docx</td><td>9 处</td><td>手机×3 身份证×3 人名×2 地址×1</td><td>劳动合同书_脱敏.docx</td><td>已导出</td></tr>
+            <tr><td>2026-08-10 14:30</td><td>保密协议-项目组.docx</td><td>6 处</td><td>人名×3 公司×2 邮箱×1</td><td>保密协议_脱敏.docx</td><td>已导出</td></tr>
+            <tr><td>2026-08-10 14:29</td><td>项目讨论纪要.md</td><td>4 处</td><td>人名×2 项目代号×2</td><td>项目讨论纪要_脱敏.md</td><td>已导出</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  /* 侧边栏页面切换 */
+  const navItems = document.querySelectorAll('#sidebar .nav-item');
+  const pages = document.querySelectorAll('.page');
+  function showPage(name) {
+    pages.forEach(p => p.classList.toggle('active', p.id === 'page-' + name));
+    navItems.forEach(n => n.classList.toggle('active', n.dataset.page === name));
+  }
+  navItems.forEach(n => n.addEventListener('click', () => showPage(n.dataset.page)));
+
+  /* toast */
+  let toastTimer;
+  function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+  }
+
+  /* 工作台：开始扫描（模拟进度） */
+  const btnScan = document.getElementById('btn-scan');
+  const prog = document.getElementById('scan-progress');
+  const fill = document.getElementById('scan-fill');
+  const msg = document.getElementById('scan-msg');
+  const pct = document.getElementById('scan-pct');
+  btnScan.addEventListener('click', () => {
+    if (btnScan.dataset.running) return;
+    btnScan.dataset.running = '1'; btnScan.disabled = true;
+    prog.classList.add('show');
+    let p = 0;
+    const steps = ['正在解析 PDF…', '正在解析 DOCX…', '正在运行规则引擎…', '正在合并命中…'];
+    const iv = setInterval(() => {
+      p += Math.random() * 16 + 6;
+      if (p >= 100) {
+        p = 100; clearInterval(iv);
+        fill.style.width = '100%'; pct.textContent = '100%'; msg.textContent = '扫描完成';
+        ['s1','s2','s3','s4'].forEach(id => {
+          const el = document.getElementById(id);
+          el.classList.remove('ready'); el.classList.add('done'); el.textContent = '完成 · 23 处';
+        });
+        setTimeout(() => {
+          btnScan.dataset.running = ''; btnScan.disabled = false;
+          prog.classList.remove('show'); fill.style.width = '0%';
+          showPage('preview');
+          toast('扫描完成：4 个文件 · 42 处命中');
+        }, 500);
+      } else {
+        fill.style.width = p + '%'; pct.textContent = Math.round(p) + '%';
+        msg.textContent = steps[Math.min(Math.floor(p / 28), steps.length - 1)];
+      }
+    }, 180);
+  });
+
+  /* 预览页：勾选联动 + 命中定位 */
+  const hitItems = document.querySelectorAll('.hit-item');
+  const confirmN = document.getElementById('confirm-n');
+  const statTotal = document.getElementById('stat-total');
+  const statConfirmed = document.getElementById('stat-confirmed');
+  const m0 = document.getElementById('m0'), m1 = document.getElementById('m1'), m2 = document.getElementById('m2');
+  function refreshConfirm() {
+    const total = 42, confirmed = document.querySelectorAll('.hit-item .hit-checkbox:checked').length;
+    confirmN.textContent = confirmed;
+    statConfirmed.textContent = confirmed;
+  }
+  hitItems.forEach(item => {
+    const cb = item.querySelector('.hit-checkbox');
+    const idx = item.dataset.hi;
+    cb.addEventListener('change', () => {
+      item.classList.toggle('sel', cb.checked);
+      refreshConfirm();
+      if (idx === '8') m0.style.opacity = cb.checked ? '1' : '.25';
+      if (idx === '10') m1.style.opacity = cb.checked ? '1' : '.25';
+      if (idx === '11') m2.style.opacity = cb.checked ? '1' : '.25';
+    });
+    item.addEventListener('click', e => {
+      if (e.target.classList.contains('hit-checkbox')) return;
+      cb.checked = !cb.checked;
+      item.classList.toggle('sel', cb.checked);
+      refreshConfirm();
+    });
+  });
+  document.getElementById('btn-deselect-all').addEventListener('click', () => {
+    const anyOn = document.querySelectorAll('.hit-item .hit-checkbox:checked').length > 0;
+    document.querySelectorAll('.hit-item .hit-checkbox').forEach(cb => { cb.checked = !anyOn; cb.closest('.hit-item').classList.toggle('sel', !anyOn); });
+    refreshConfirm();
+  });
+
+  /* 导出 */
+  document.getElementById('btn-export').addEventListener('click', () => {
+    const n = document.querySelectorAll('.hit-item .hit-checkbox:checked').length;
+    toast('已导出 4 个脱敏副本 + 映射文件（' + n + ' 处命中已脱敏）');
+    showPage('audit');
+  });
+
+  /* 策略页：替换符实时预览 */
+  const maskChar = document.getElementById('mask-char');
+  const maskPreview = document.getElementById('mask-preview');
+  maskChar.addEventListener('input', () => {
+    const c = maskChar.value || '*';
+    maskPreview.textContent = '138' + c.repeat(4) + '8000';
+  });
+
+  /* 模型市场：模拟下载 */
+  const mBtn = document.getElementById('m-btn');
+  const mBar = document.getElementById('m-bar');
+  const mPct = document.getElementById('m-pct');
+  const mTag = document.getElementById('m-tag');
+  const mProg = document.getElementById('m-progress');
+  let mDl = null;
+  mBtn.addEventListener('click', () => {
+    if (mBtn.dataset.state === 'done') { toast('模型已安装并启用'); return; }
+    if (mDl) return;
+    mBtn.disabled = true; mProg.classList.add('show');
+    let p = 0;
+    mDl = setInterval(() => {
+      p += Math.random() * 9 + 3;
+      if (p >= 100) {
+        p = 100; clearInterval(mDl); mDl = null;
+        mBar.style.width = '100%'; mPct.textContent = '100% · 校验通过';
+        mBtn.disabled = false; mBtn.dataset.state = 'done';
+        mBtn.textContent = '已安装 · 启用中'; mBtn.classList.remove('primary');
+        mTag.textContent = '已安装'; mTag.className = 'model-tag installed';
+        toast('模型下载完成，已启用中文 NER 增强');
+      } else {
+        mBar.style.width = p + '%'; mPct.textContent = Math.round(p) + '% · 32 MB/s';
+      }
+    }, 120);
+  });
+
+  /* 还原页 */
+  const restoreIn = document.getElementById('restore-in');
+  const restoreOut = document.getElementById('restore-out');
+  const MAP = { '[公司1]':'北京降本增笑有限公司', '[人名1]':'张三', '[金额1]':'400', '[银行卡1]':'6222 0210 0034 5678 901', '[邮箱1]':'zhangsan@jianben.cn' };
+  document.getElementById('btn-restore').addEventListener('click', () => {
+    const html = restoreIn.value.replace(/\[[^\]]+\]/g, ph => {
+      const r = MAP[ph] || ph;
+      return r === ph ? ph : '<span class="ph">' + r + '</span>';
+    }).replace(/\n/g, '<br>');
+    restoreOut.innerHTML = html;
+    const done = document.createElement('div');
+    done.className = 'restore-result-note';
+    done.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> 还原完成：5 个占位符已还原（映射文件口令校验通过）';
+    restoreOut.appendChild(done);
+    toast('还原完成');
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 300" width="1180" height="300" role="img" aria-label="墨隐 InkVeil · 开源 AI 法律本地脱敏工具">
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fbf7ef"/>
+      <stop offset="1" stop-color="#ece5d6"/>
+    </linearGradient>
+    <linearGradient id="ink" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#1a1d2b"/>
+      <stop offset="1" stop-color="#0b0d14"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(20 30) scale(0.234375)">
+    <rect width="1024" height="1024" rx="228" fill="url(#paper)"/>
+    <rect x="1.5" y="1.5" width="1021" height="1021" rx="227" fill="none" stroke="#000" stroke-opacity="0.06" stroke-width="3"/>
+    <g fill="#bfb6a8">
+      <rect x="232" y="262" width="560" height="48" rx="24"/>
+      <rect x="232" y="366" width="400" height="48" rx="24"/>
+      <rect x="232" y="664" width="380" height="48" rx="24"/>
+      <rect x="232" y="768" width="300" height="48" rx="24"/>
+    </g>
+    <path fill="url(#ink)" d="M214 462C238 436 300 446 372 464C500 490 640 484 746 448C792 432 830 426 838 452C848 488 826 556 786 588C720 604 560 586 428 598C340 606 266 612 222 590C190 574 190 492 214 462Z"/>
+    <path d="M596 534C676 522 742 514 802 498" fill="none" stroke="#fbf7ef" stroke-opacity="0.55" stroke-width="7" stroke-linecap="round"/>
+    <rect x="676" y="676" width="116" height="116" rx="16" fill="#c4392c"/>
+    <rect x="700" y="700" width="68" height="68" rx="6" fill="none" stroke="#fbf7ef" stroke-width="8"/>
+  </g>
+  <text x="300" y="168" font-family="'Songti SC','STSong','Noto Serif CJK SC','Source Han Serif SC','SimSun',serif" font-weight="900" font-size="124" fill="#14161f">墨隐</text>
+  <text x="566" y="168" font-family="-apple-system,'Inter','Helvetica Neue',Arial,sans-serif" font-weight="700" font-size="104" letter-spacing="-2" fill="#14161f">InkVeil</text>
+  <text x="302" y="242" font-family="-apple-system,'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',sans-serif" font-weight="500" font-size="34" letter-spacing="2" fill="#6b6559">开源 AI 法律本地脱敏工具 · 安全可靠 · 数据不联网</text>
+</svg>
