@@ -59,7 +59,7 @@ npm run tauri dev
 
 ### 📮 商业授权联系方式
 
-- GitHub Issues：<https://github.com/shenlaibot/shenlai_AnonKit/issues>
+- GitHub Issues：<https://github.com/shenlaibot/shenlaiai_InkVeil/issues>
 - 邮箱：shenlaibot@gmail.com
 
 ---
