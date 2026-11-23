@@ -1,6 +1,6 @@
 [package]
 name = "anonymizer-pipeline"
-version = "0.1.5"
+version = "0.2.0"
 license-file = "../../LICENSE"
 edition = "2021"
 description = "墨隐 InkVeil 本地文档脱敏处理管线：sidecar 解析 → 检测合并 → 映射/变换 → 写回"

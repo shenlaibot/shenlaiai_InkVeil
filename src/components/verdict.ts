@@ -34,6 +34,8 @@ export interface ExportSnapshot {
 export interface Reason {
   level: "red" | "yellow";
   text: string;
+  /** uncovered：界面用分组清单代替这句概述；报告与复制清单仍保留 */
+  kind?: "uncovered";
 }
 
 export interface FileVerdict {
@@ -47,31 +49,31 @@ export interface FileVerdict {
 
 export const LEVEL_ORDER: Record<Level, number> = { red: 0, yellow: 1, green: 2 };
 export const LEVEL_NAME: Record<Level, string> = { red: "红", yellow: "黄", green: "绿" };
+/** 界面上的状态词（比“红/黄/绿”直接） */
+export const LEVEL_LABEL: Record<Level, string> = { red: "不可外发", yellow: "需核对", green: "通过" };
 
 /** 未覆盖部位的用户提示文案（不得出现“未发现敏感信息/安全”这类暗示） */
 export function uncoveredText(u: UncoveredItem): string {
   switch (u.kind) {
     case "scanned_page":
-      return "本页为图片，未能检测内容，请人工核对或涂黑";
+      return "未检测，请人工核对或涂黑";
     case "image":
-      return u.where.startsWith("第")
-        ? "本页含图片，图片内的文字未能检测，请人工核对或涂黑"
-        : "图片内的文字未能检测，请人工核对或涂黑";
+      return "其中文字未检测，请人工核对或涂黑";
     case "embedded":
-      return "嵌入对象的内容未能检测，也未被处理，请人工核对";
+      return "内容未检测也未处理，请人工核对";
     case "pivot":
-      return "透视表及其缓存未被处理，其中的原文可能仍在文件中，请人工核对";
+      return "未处理，可能仍含原文，请人工核对";
     case "external_link":
-      return "外部链接缓存未被处理，其中的原文可能仍在文件中，请人工核对";
+      return "未处理，可能仍含原文，请人工核对";
     case "custom_xml":
-      return "自定义 XML 数据未被处理，其中的原文可能仍在文件中，请人工核对";
+      return "未处理，可能仍含原文，请人工核对";
     default:
-      return "该部位未被处理，请人工核对";
+      return "未处理，请人工核对";
   }
 }
 
 export const KIND_NAME: Record<string, string> = {
-  scanned_page: "扫描页/整页图片",
+  scanned_page: "扫描页",
   image: "图片",
   embedded: "嵌入对象",
   pivot: "透视表",
@@ -87,34 +89,34 @@ export function judgeFile(fr: RedactFileResult, snap: FileSnapshot): FileVerdict
 
   if (residual.length > 0) {
     const n = residual.reduce((a, r) => a + r.count, 0);
-    reasons.push({ level: "red", text: `复检发现 ${n} 处已确认的原文仍在输出中，输出已删除，未交付` });
+    reasons.push({ level: "red", text: `复检发现 ${n} 处原文残留，输出已删除` });
   } else if (fr.error) {
-    reasons.push({ level: "red", text: "导出失败，未生成脱敏副本（详见下方说明）" });
+    reasons.push({ level: "red", text: "导出失败，未生成副本" });
   }
   if (snap.channelWarnings.length > 0) {
     reasons.push({
       level: "red",
-      text: `检测通道失效或无法确认已完整检测（${snap.channelWarnings.length} 条扫描提醒）${
-        snap.overrideNote ? `；已按理由“${snap.overrideNote}”放行` : ""
+      text: `无法确认检测完整（${snap.channelWarnings.length} 条提醒）${
+        snap.overrideNote ? `，已按“${snap.overrideNote}”放行` : ""
       }`,
     });
   }
 
   if (!fr.error) {
     if (fr.confirmed === 0 && !fr.output_path) {
-      reasons.push({ level: "yellow", text: "本文件未勾选任何命中，未导出" });
+      reasons.push({ level: "yellow", text: "未勾选任何命中，未导出" });
     } else {
       if (uncovered.length > 0) {
-        reasons.push({ level: "yellow", text: `存在 ${uncovered.length} 处未覆盖部位，其内容未被检测或处理` });
+        reasons.push({ level: "yellow", kind: "uncovered", text: `${uncovered.length} 处内容未检测或未处理` });
       }
       if (fr.verified === false) {
-        reasons.push({ level: "yellow", text: "残留复检未能运行，无法确认输出中没有原文" });
+        reasons.push({ level: "yellow", text: "复检未能运行，无法确认没有残留" });
       }
       if (snap.lowConfUnreviewed > 0) {
-        reasons.push({ level: "yellow", text: `${snap.lowConfUnreviewed} 处低置信度命中未勾选（未脱敏），请确认是否需要处理` });
+        reasons.push({ level: "yellow", text: `${snap.lowConfUnreviewed} 处低置信度命中未勾选，仍为原文` });
       }
       if (!fr.is_deep && uncovered.length === 0 && fr.verified !== false) {
-        reasons.push({ level: "yellow", text: "引擎提示存在未精确处理的部位，请查看提示并人工核对" });
+        reasons.push({ level: "yellow", text: "部分内容未精确处理，请人工核对" });
       }
     }
   }
@@ -128,9 +130,9 @@ export function judgeFile(fr: RedactFileResult, snap: FileSnapshot): FileVerdict
     level === "red"
       ? residual.length > 0 || fr.error
         ? "不可外发"
-        : "检测不完整，不建议外发"
+        : "检测不完整"
       : level === "yellow"
-        ? "需人工核对后再外发"
+        ? "需核对"
         : "复检通过";
   return { level, headline, reasons, snap, result: fr };
 }
@@ -184,6 +186,29 @@ export function uncoveredLine(file: string, u: UncoveredItem): string {
   return `${file} · ${u.where} · ${KIND_NAME[u.kind] ?? "其他"}${u.count > 1 ? ` × ${u.count}` : ""} · ${uncoveredText(u)}`;
 }
 
+/** 结论页的分组展示：同类未覆盖部位合并成一行 */
+export interface UncoveredGroup {
+  kind: string;
+  name: string;
+  count: number;
+  where: string[];
+  advice: string;
+}
+
+export function groupUncovered(list: UncoveredItem[]): UncoveredGroup[] {
+  const map = new Map<string, UncoveredGroup>();
+  for (const u of list) {
+    let g = map.get(u.kind);
+    if (!g) {
+      g = { kind: u.kind, name: KIND_NAME[u.kind] ?? "其他", count: 0, where: [], advice: uncoveredText(u) };
+      map.set(u.kind, g);
+    }
+    g.count += u.count;
+    if (u.where && !g.where.includes(u.where)) g.where.push(u.where);
+  }
+  return [...map.values()];
+}
+
 /** 单个文件的可复制清单（残留 + 未覆盖 + 其他原因） */
 export function listText(v: FileVerdict, displayName: string): string {
   const lines: string[] = [`【${LEVEL_NAME[v.level]}】${displayName}：${v.headline}`];
@@ -208,6 +233,15 @@ export const RULE_TEXT: { level: Level; text: string }[] = [
     text: "复检发现已确认的原文仍在输出中（此时输出文件已自动删除，不会交付）；或检测通道失效/无法确认已完整检测（如规则失效、NER 请求失败、无可提取文字）；或导出失败。红色文件不提供“一键放行”，须回到预览修正后重新导出；检测通道失效的文件只能在导出前带理由放行并记入审计。",
   },
 ];
+
+/** 结论页的精简判定说明（完整表述见 RULE_TEXT，用于报告；两处含义必须一致） */
+export const RULE_SHORT: Record<Level, string> = {
+  green: "复检无残留，没有未覆盖部位，低置信度命中已审阅。",
+  yellow: "有未覆盖部位（图片、扫描页、嵌入对象等）、复检未运行、低置信度命中未勾选、部分内容未精确处理，或未勾选任何命中。",
+  red: "复检发现残留（输出已删除）、无法确认检测完整，或导出失败。",
+};
+
+export const SCOPE_SHORT = "复检只验证已确认的内容，不代表没有漏检；图片内文字不在检测范围。";
 
 export const SCOPE_STATEMENT =
   "复检只证明“已确认的已知原文”在输出的可提取内容中没有残留，不证明没有漏检；图片、扫描件内的文字不在检测与复检范围。";

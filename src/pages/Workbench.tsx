@@ -219,6 +219,11 @@ export function WorkbenchPage() {
   const step = files.length ? 2 : 1;
   const totalSize = files.reduce((a, f) => a + (f.size || 0), 0);
 
+  const openExportFolder = () => {
+    const path = lastBatch?.result.files.find((f) => f.output_path && !f.error)?.output_path;
+    if (path) void openInFolder(path).catch((e) => toast(`无法打开导出文件夹: ${e}`));
+  };
+
   return (
     <div className="wf-page">
       <div className="wf-head">
@@ -232,12 +237,7 @@ export function WorkbenchPage() {
       {lastBatch && !files.length && (
         <BatchDoneCard
           batch={lastBatch}
-          onOpenFolder={() => {
-            const p = lastBatch.result.files.map((f) => f.output_path).find((x): x is string => !!x);
-            const target = p ?? lastBatch.outputDir;
-            if (target) void openInFolder(target).catch((e) => toast(`无法打开文件夹: ${e}`));
-            else toast("这一批没有生成脱敏副本");
-          }}
+          onOpenFolder={openExportFolder}
           onViewReport={() => setSummaryOpen(true)}
           onNewFiles={() => void onPickFiles()}
           onRetry={() => void doImport(lastBatch.notExported.map((f) => f.path))}
@@ -471,12 +471,10 @@ export function WorkbenchPage() {
         <ExportSummary
           result={lastBatch.result}
           snapshot={lastBatch.snapshot}
+          outputDir={lastBatch.outputDir}
           toast={toast}
           onClose={() => setSummaryOpen(false)}
-          onOpenFolder={() => {
-            const p = lastBatch.result.files.map((f) => f.output_path).find((x): x is string => !!x);
-            if (p) void openInFolder(p).catch(() => undefined);
-          }}
+          onOpenFolder={openExportFolder}
           onAudit={() => {
             setSummaryOpen(false);
             navigate("audit");

@@ -1,6 +1,6 @@
 [package]
 name = "anonkit"
-version = "0.1.5"
+version = "0.2.0"
 license-file = "../LICENSE"
 description = "墨隐 InkVeil - 开源 AI 法律本地脱敏工具（本地文档脱敏桌面应用）"
 authors = ["InkVeil Team"]

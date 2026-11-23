@@ -40,6 +40,39 @@ def test_docx_split_runs_detected():
         assert find_residue(p, "docx", ["联系人张三"])
 
 
+def test_docx_counts_each_occurrence_once_and_respects_paragraph_boundaries(tmp_path):
+    path = tmp_path / "a.docx"
+    doc = Document()
+    doc.add_paragraph("138 0013")
+    doc.add_paragraph("8000")
+    doc.add_paragraph("13800138000")
+    split = doc.add_paragraph()
+    split.add_run("138")
+    split.add_run("0013 8000")
+    doc.save(path)
+
+    assert find_residue(path, "docx", ["13800138000"]) == [
+        {"index": 0, "length": 11, "where": "word/document.xml（文本）", "count": 2}
+    ]
+
+
+def test_xlsx_rich_text_does_not_join_distinct_shared_strings(tmp_path):
+    path = tmp_path / "a.xlsx"
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr(
+            "xl/sharedStrings.xml",
+            '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            "<si><t>张</t></si><si><t>三</t></si><si><r><t>张</t></r><r><t>三</t></r></si></sst>",
+        )
+        zf.writestr("xl/workbook.xml", '<workbook><sheet name="张三"/></workbook>')
+
+    residues = find_residue(path, "xlsx", ["张三"])
+    assert [(r["where"], r["count"]) for r in residues] == [
+        ("xl/sharedStrings.xml（文本）", 1),
+        ("xl/workbook.xml（属性）", 1),
+    ]
+
+
 def test_docx_clean_has_no_residue():
     with tempfile.TemporaryDirectory() as d:
         p = os.path.join(d, "a.docx")

@@ -22,9 +22,9 @@
 | alloc-no-stdlib | 2.0.4 | BSD-3-Clause | runtime |
 | alloc-stdlib | 0.2.4 | BSD-3-Clause | runtime |
 | android_system_properties | 0.1.6 | MIT OR Apache-2.0 | runtime |
-| anonkit | 0.1.4 | Apache-2.0 | first-party |
-| anonymizer-core | 0.1.4 | Apache-2.0 | first-party |
-| anonymizer-pipeline | 0.1.4 | Apache-2.0 | first-party |
+| anonkit | 0.2.0 | Apache-2.0 | first-party |
+| anonymizer-core | 0.2.0 | Apache-2.0 | first-party |
+| anonymizer-pipeline | 0.2.0 | Apache-2.0 | first-party |
 | anyhow | 1.0.104 | MIT OR Apache-2.0 | runtime |
 | arbitrary | 1.4.2 | MIT OR Apache-2.0 | runtime |
 | async-broadcast | 0.7.2 | MIT OR Apache-2.0 | runtime |

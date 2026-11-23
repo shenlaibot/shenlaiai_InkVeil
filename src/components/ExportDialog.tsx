@@ -163,17 +163,11 @@ export function ExportDialog(props: { files: ScannedFile[]; onClose: () => void 
       const snaps = new Map<string, FileSnapshot>(snapshot.files.map((f) => [f.path, f]));
       const levels = new Map<string, VerdictLevel>(judgeAll(result.files, snaps).map((v) => [v.result.input_path, v.level]));
       const okCount = result.files.filter((f) => f.output_path && !f.error).length;
+      // 结果由结论页展示；这里只保留必须立刻处理的异常
       if (result.vault_saved) {
-        toast(`已导出 ${okCount} 个脱敏副本；映射已保存到项目（共 ${result.mapping_entries} 条）`);
         void vaultInfo().then(setVault).catch(() => undefined);
-      } else if (vault) {
-        toast(`已导出 ${okCount} 个脱敏副本，但映射未能保存到项目，请立即检查项目文件的写入权限，否则这批脱敏稿无法还原`);
-      } else {
-        toast(
-          result.mapping_path
-            ? `已导出 ${okCount} 个脱敏副本 + 加密映射文件（${result.mapping_entries} 条映射）`
-            : `已导出 ${okCount} 个脱敏副本。未打开项目也未设置口令，未生成映射文件，脱敏稿无法还原`,
-        );
+      } else if (vault && okCount > 0) {
+        toast("映射未能保存到项目，这批脱敏稿无法还原，请检查项目文件的写入权限");
       }
       // 收尾：记录已处理、清空工作区、回到工作台并打开结论页（本对话框随预览页一起卸载）
       completeBatch({ result, snapshot, levels, overridden: note ? riskyNames : new Set(), outputDir: dir });
@@ -187,10 +181,10 @@ export function ExportDialog(props: { files: ScannedFile[]; onClose: () => void 
 
   // 映射保存位置
   const mapping = vault
-    ? { icon: <Lock size={14} />, text: `保存到项目「${vault.name}」`, sub: "可在还原页用该项目还原 AI 返回的文稿", warn: false }
+    ? { icon: <Lock size={14} />, text: `项目「${vault.name}」`, sub: "可还原", warn: false }
     : config.passphrase
-      ? { icon: <KeyRound size={14} />, text: "加密映射文件（anonkit.anonymap.enc）", sub: "写入输出目录，还原时需要口令", warn: false }
-      : { icon: <TriangleAlert size={14} />, text: "不保存映射", sub: "未打开项目也未设置口令：导出后无法还原占位符", warn: true };
+      ? { icon: <KeyRound size={14} />, text: "加密文件", sub: "存到输出目录，还原时需口令", warn: false }
+      : { icon: <TriangleAlert size={14} />, text: "不保存", sub: "导出后无法还原", warn: true };
 
   const total = Math.max(1, progress?.total ?? files.length);
   const pct = Math.round(((progress?.done ?? 0) / total) * 100);
@@ -205,7 +199,7 @@ export function ExportDialog(props: { files: ScannedFile[]; onClose: () => void 
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-h" id="wf-export-title">
-          {phase === "running" ? "正在导出脱敏副本…" : phase === "error" ? "导出未完成" : "导出脱敏副本"}
+          {phase === "running" ? "正在导出…" : phase === "error" ? "导出未完成" : "导出脱敏副本"}
           <span style={{ flex: 1 }} />
           {!running && (
             <button className="icon-x" onClick={onClose} aria-label="关闭导出对话框">
@@ -217,19 +211,16 @@ export function ExportDialog(props: { files: ScannedFile[]; onClose: () => void 
           {phase !== "running" && (
             <>
               <dl className="wf-kv">
-                <dt>导出内容</dt>
-                <dd>
-                  {pre.willExport} 个文件 · 已确认 {pre.hits} 处命中
-                  {pre.noHits.length > 0 && <span className="wf-muted">（{pre.noHits.length} 个文件未勾选命中，将不导出）</span>}
-                </dd>
-                <dt>输出目录</dt>
+                <dt>内容</dt>
+                <dd>{pre.willExport} 个文件 · {pre.hits} 处</dd>
+                <dt>输出到</dt>
                 <dd className="wf-kv-row">
                   <span className={`wf-path ${outDir ? "" : "wf-muted"}`} title={outDir ?? ""}>{outDir ?? "尚未选择"}</span>
                   <button className="btn sm" onClick={() => void chooseDir()}>
                     <FolderOpen size={13} /> {outDir ? "更改" : "选择"}
                   </button>
                 </dd>
-                <dt>映射保存</dt>
+                <dt>映射</dt>
                 <dd className={`wf-kv-row ${mapping.warn ? "is-warn" : ""}`}>
                   {mapping.icon}
                   <span>
@@ -237,37 +228,35 @@ export function ExportDialog(props: { files: ScannedFile[]; onClose: () => void 
                     <span className="wf-muted"> · {mapping.sub}</span>
                   </span>
                   {mapping.warn && (
-                    <button className="btn sm ghost" onClick={() => { onClose(); navigate("vault"); }}>去打开项目</button>
+                    <button className="btn sm ghost" onClick={() => { onClose(); navigate("vault"); }}>打开项目</button>
                   )}
                 </dd>
               </dl>
 
-              <div className="wf-precheck" aria-label="导出前预检">
-                <div className="wf-precheck-h">导出前预检</div>
+              <div className="wf-precheck" aria-label="导出前检查">
                 {pre.risky.length === 0 && pre.lowConf === 0 && pre.noHits.length === 0 ? (
-                  <div className="wf-pc-row g"><i aria-hidden="true" />未发现需要额外处理的项。导出后会自动复检，并给出每个文件的红 / 黄 / 绿结论。</div>
+                  <div className="wf-pc-row g"><i aria-hidden="true" />检查通过，导出后自动复检</div>
                 ) : (
                   <>
                     {pre.risky.length > 0 && (
                       <div className="wf-pc-row r">
                         <i aria-hidden="true" />
-                        <span><b>红 · {pre.risky.length} 个文件无法确认已完整检测</b>（检测通道失效、被跳过或没有可提取文字）：
-                          {pre.risky.map((f) => f.name).join("、")}</span>
+                        <span><b>{pre.risky.length} 个文件无法确认检测完整</b>：{pre.risky.map((f) => f.name).join("、")}</span>
                       </div>
                     )}
                     {pre.lowConf > 0 && (
-                      <div className="wf-pc-row y"><i aria-hidden="true" /><span><b>黄 · {pre.lowConf} 处低置信度命中未勾选</b>，导出后会保留原文</span></div>
+                      <div className="wf-pc-row y"><i aria-hidden="true" /><span><b>{pre.lowConf} 处低置信度命中未勾选</b>，将保留原文</span></div>
                     )}
                     {pre.noHits.length > 0 && (
-                      <div className="wf-pc-row y"><i aria-hidden="true" /><span><b>黄 · {pre.noHits.length} 个文件未勾选任何命中</b>，不会生成脱敏副本</span></div>
+                      <div className="wf-pc-row y"><i aria-hidden="true" /><span><b>{pre.noHits.length} 个文件未勾选命中</b>，不会导出</span></div>
                     )}
                   </>
                 )}
                 {pre.risky.length > 0 && (
                   <label className="wf-reason">
-                    <span>“没有命中”不代表没有敏感信息。如确需继续，请选择理由（记入审计，不含文档内容）：</span>
+                    <span>继续导出需选择理由（记入审计）</span>
                     <select value={note} onChange={(e) => setNote(e.target.value)}>
-                      <option value="">请选择理由…</option>
+                      <option value="">选择理由…</option>
                       <option value="已人工核对原文">已人工核对原文</option>
                       <option value="仅内部使用，不对外发送">仅内部使用，不对外发送</option>
                       <option value="扫描页已人工涂黑或不含敏感信息">扫描页已人工涂黑或不含敏感信息</option>
@@ -281,7 +270,7 @@ export function ExportDialog(props: { files: ScannedFile[]; onClose: () => void 
                 <div className="wf-error" role="alert">
                   <div>
                     <b>导出失败</b>：{error}
-                    <div className="wf-muted">勾选状态已保留，可重试或返回修改。</div>
+                    <div className="wf-muted">勾选已保留，可重试。</div>
                   </div>
                 </div>
               )}
@@ -295,7 +284,7 @@ export function ExportDialog(props: { files: ScannedFile[]; onClose: () => void 
               </div>
               <div className="wf-scan-meta">
                 <span>已完成 {progress?.done ?? 0}/{progress?.total ?? files.length}</span>
-                <span>导出后自动复检残留</span>
+                <span>完成后自动复检</span>
               </div>
               <ul className="wf-file-list wf-run-list">
                 {files.map((f, i) => {
@@ -317,10 +306,10 @@ export function ExportDialog(props: { files: ScannedFile[]; onClose: () => void 
         </div>
         <div className="modal-f">
           {phase === "running" ? (
-            <span className="wf-muted">导出进行中，请勿关闭应用…</span>
+            <span className="wf-muted">请勿关闭应用</span>
           ) : (
             <>
-              <button className="btn ghost" onClick={onClose}>返回检查</button>
+              <button className="btn ghost" onClick={onClose}>返回</button>
               <button
                 className="btn primary"
                 disabled={(pre.risky.length > 0 && !note) || pre.hits === 0}

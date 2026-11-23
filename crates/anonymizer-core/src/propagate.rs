@@ -4,7 +4,7 @@
 //! 后文无前缀的「陈瑾瑜负责对接」「云图公司应当付款」不会被命中，等于漏脱敏。
 //!
 //! 约束（避免传播放大误报）：
-//! - 只传播“姓名 / 公司名称 / 开户银行 / 机构 / 地址”类实体；证件号等数字类本来就是全文正则匹配，无需传播；
+//! - 传播姓名、公司名称、开户银行、机构、地址和依赖上下文识别的合同/业务编号；
 //! - 只以可靠来源的命中作种子：置信度 ≥ [`SEED_MIN_CONFIDENCE`]，且来源不是“姓名启发式”
 //!   （启发式本身已在全文扫描）；
 //! - 种子文本至少 2 个字符；
@@ -14,10 +14,13 @@
 
 use std::collections::HashSet;
 
+use crate::rules::ID_CONTRACT_NO;
 use crate::{Hit, HitSource};
 
 /// 可传播的实体类型。
-const PROPAGATE_TYPES: [&str; 5] = ["name", "company_name", "bank_name", "org", "address"];
+const PROPAGATE_TYPES: [&str; 6] = [
+    "name", "company_name", "bank_name", "org", "address", ID_CONTRACT_NO,
+];
 /// 作为传播种子的最低置信度。
 pub const SEED_MIN_CONFIDENCE: f64 = 0.6;
 /// 传播命中的置信度（略低于种子，交由用户在预览页裁决）。
@@ -75,6 +78,14 @@ pub fn propagate(text: &str, hits: Vec<Hit>, aliases: &[(String, String)]) -> Ve
     let mut added: Vec<Hit> = Vec::new();
     for (seed, rule_id, rule_label) in &seeds {
         for (b, _) in text.match_indices(seed.as_str()) {
+            // 编号须完整匹配，避免把另一个更长编号中的子串替换掉。
+            let is_number_char = |c: char| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '/');
+            if rule_id == ID_CONTRACT_NO
+                && (text[..b].ends_with(is_number_char)
+                    || text[b + seed.len()..].starts_with(is_number_char))
+            {
+                continue;
+            }
             let cs = byte_to_char(b);
             let ce = cs + seed.chars().count();
             if overlaps(cs, ce, &occupied) {
@@ -155,5 +166,16 @@ mod tests {
         let text = "手机13800138000，再次13800138000";
         let seeds = vec![hit("mobile", "手机号", 2, 13, "13800138000", 0.9, HitSource::Rule)];
         assert_eq!(propagate(text, seeds, &[]).len(), 1);
+    }
+
+    #[test]
+    fn contract_number_propagates_only_to_complete_matches() {
+        let text = "编号：HT-1234。详见 HT-1234，另有 HT-1234-2、BHT-1234。";
+        let seed = hit("contract_no", "合同/业务编号", 3, 10, "HT-1234", 0.9, HitSource::Rule);
+        let hits = propagate(text, vec![seed], &[]);
+        assert_eq!(hits.len(), 2);
+        let chars: Vec<_> = text.chars().collect();
+        assert_eq!(chars[hits[1].start..hits[1].end].iter().collect::<String>(), "HT-1234");
+        assert_eq!(chars[hits[1].end], '，');
     }
 }

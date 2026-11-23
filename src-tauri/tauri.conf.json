@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "InkVeil",
   "mainBinaryName": "InkVeil",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "identifier": "com.anonkit.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -35,6 +35,10 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
+    "macOS": {
+      "entitlements": "Entitlements.plist",
+      "minimumSystemVersion": "12.0"
+    },
     "externalBin": ["binaries/anonkit-sidecar"],
     "icon": [
       "icons/32x32.png",
@@ -42,10 +46,6 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ],
-    "macOS": {
-      "entitlements": "Entitlements.plist",
-      "minimumSystemVersion": "12.0"
-    }
+    ]
   }
 }

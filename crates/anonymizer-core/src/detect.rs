@@ -459,6 +459,21 @@ mod tests {
     }
 
     #[test]
+    fn phone_and_card_rules_do_not_join_separate_lines() {
+        let rules = builtin_rules();
+        for (id, text) in [
+            ("mobile", "1380013\n8000"),
+            ("phone", "010\n62345678"),
+            ("bank_card", "5100 1406\n8350 5150"),
+        ] {
+            assert!(!Detector::detect(text, &rules).iter().any(|h| h.rule_id == id));
+        }
+
+        let hits = Detector::detect("5100140683505150\n123", &rules);
+        assert!(hits.iter().any(|h| h.rule_id == "bank_card" && h.text == "5100140683505150"));
+    }
+
+    #[test]
     fn bank_card_not_match_id_card() {
         // 18 位身份证不得作为银行卡号命中
         let rules = builtin_rules();

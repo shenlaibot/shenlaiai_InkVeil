@@ -88,7 +88,7 @@ export interface LastBatch {
   exported: number;
   /** 未生成脱敏副本的文件（失败/复检阻止/未勾选），可一键重新导入 */
   notExported: { path: string; name: string }[];
-  outputDir: string | null;
+  outputDir: string;
 }
 
 export type ExportState = "idle" | "exporting";
@@ -165,9 +165,10 @@ const CFG_KEY = "anonkit.config.v1";
  * - v4：新增「案号 / 合同编号 / 地址」规则，诉讼角色（原告/被告/审判长…）纳入姓名与公司规则。
  * - v5：新增「银行账号 / 护照与通行证」规则；手机号支持全角数字，身份证支持分组空格，座机支持括号/空格/分机。
  * - v6：新增「港澳台证件号」规则；姓名前缀补繁体写法（聯絡人/負責人…）。
+ * - v7：手机号、银行卡号、固定电话不跨换行合并数字。
  * 之后内置正则（如 rules.rs）更新就 +1。
  */
-const RULES_SCHEMA_VERSION = 6;
+const RULES_SCHEMA_VERSION = 7;
 
 /** 序列化用于持久化：口令只存在于内存，绝不写入 localStorage / SQLite */
 function serializeConfig(cfg: AppConfig): string {

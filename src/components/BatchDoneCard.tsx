@@ -19,33 +19,42 @@ export function BatchDoneCard(props: {
         <CircleCheck size={20} className="wf-done-ic" aria-hidden="true" />
         <div className="wf-done-tt">
           <div id="wf-done-title" className="wf-done-title">上一批已完成</div>
-          <div className="wf-muted">{time} · 已导出 {batch.exported} 个脱敏副本，这些文件再次导入时会自动跳过</div>
+          <div className="wf-muted">
+            {time} · 已导出 {batch.exported} 个文件
+            {batch.exported > 0 && " · 再次导入将自动跳过"}
+          </div>
         </div>
         <button className="icon-x" onClick={props.onDismiss} aria-label="关闭上一批结果">
           <X size={15} />
         </button>
       </div>
+      {batch.exported > 0 && (
+        <div className="wf-output-location wf-done-location">
+          <span>导出位置</span>
+          <bdi className="wf-output-path">{batch.outputDir}</bdi>
+        </div>
+      )}
       <div className="wf-done-tl" aria-label="导出结论统计">
-        <span className="wf-tl g"><i aria-hidden="true" />绿 {green}<em>复检通过</em></span>
-        <span className="wf-tl y"><i aria-hidden="true" />黄 {yellow}<em>需人工核对</em></span>
-        <span className="wf-tl r"><i aria-hidden="true" />红 {red}<em>不可外发</em></span>
+        {red > 0 && <span className="wf-tl r"><i aria-hidden="true" />不可外发 {red}</span>}
+        {yellow > 0 && <span className="wf-tl y"><i aria-hidden="true" />需核对 {yellow}</span>}
+        {green > 0 && <span className="wf-tl g"><i aria-hidden="true" />通过 {green}</span>}
       </div>
       {batch.notExported.length > 0 && (
         <div className="wf-done-retry">
-          <span>
-            {batch.notExported.length} 个文件未生成脱敏副本（导出失败、复检阻止或未勾选命中），未记为已处理
-          </span>
+          <span>{batch.notExported.length} 个文件未生成副本</span>
           <button className="btn sm" onClick={props.onRetry}>
-            <RotateCcw size={13} /> 重新导入这些文件
+            <RotateCcw size={13} /> 重新导入
           </button>
         </div>
       )}
       <div className="wf-done-actions">
-        <button className="btn" onClick={props.onOpenFolder}>
-          <FolderOpen size={14} /> 打开输出文件夹
-        </button>
+        {batch.exported > 0 && (
+          <button className="btn" onClick={props.onOpenFolder}>
+            <FolderOpen size={14} aria-hidden="true" /> 打开导出文件夹
+          </button>
+        )}
         <button className="btn" onClick={props.onViewReport}>
-          <FileText size={14} /> 查看结论与报告
+          <FileText size={14} /> 查看结论
         </button>
         <span style={{ flex: 1 }} />
         <button className="btn primary" onClick={props.onNewFiles}>

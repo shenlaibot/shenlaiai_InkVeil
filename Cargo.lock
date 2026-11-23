@@ -78,7 +78,7 @@ dependencies = [
 
 [[package]]
 name = "anonkit"
-version = "0.1.5"
+version = "0.2.0"
 dependencies = [
  "anonymizer-core",
  "anonymizer-pipeline",
@@ -101,7 +101,7 @@ dependencies = [
 
 [[package]]
 name = "anonymizer-core"
-version = "0.1.5"
+version = "0.2.0"
 dependencies = [
  "aes-gcm",
  "aho-corasick",
@@ -118,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "anonymizer-pipeline"
-version = "0.1.5"
+version = "0.2.0"
 dependencies = [
  "anonymizer-core",
  "reqwest 0.12.28",

@@ -27,8 +27,10 @@ pub fn run() {
         .manage(models::DownloadManager::new())
         .manage(commands::VaultState(Mutex::new(None)))
         .setup(|app| {
-            // 应用状态持有 sidecar 管理器句柄（随应用退出时 Drop 兜底终止进程）。
+            // 应用状态持有 sidecar 管理器句柄（释放时关闭 sidecar 的 stdin，sidecar 随之退出）。
             app.manage(Mutex::new(None::<sidecar::SidecarManager>));
+            let (startup, _) = tokio::sync::watch::channel(sidecar::StartupStatus::Starting);
+            app.manage::<sidecar::StartupWatch>(startup);
 
             // SQLite 审计日志与应用配置（应用数据目录，本地零外传）。
             if let Ok(data_dir) = app.path().app_data_dir() {
@@ -46,7 +48,7 @@ pub fn run() {
                 }
             }
 
-            // 开发模式启动 sidecar：失败仅告警，不阻塞应用启动。
+            // 后台启动 sidecar，不阻塞窗口；扫描等命令会等待启动结果。
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 match sidecar::SidecarManager::start().await {
@@ -62,9 +64,16 @@ pub fn run() {
                             Err(poisoned) => poisoned.into_inner(),
                         };
                         *guard = Some(manager);
+                        drop(guard);
+                        handle
+                            .state::<sidecar::StartupWatch>()
+                            .send_replace(sidecar::StartupStatus::Ready);
                     }
                     Err(err) => {
                         eprintln!("[sidecar] failed to start (non-fatal): {err}");
+                        handle
+                            .state::<sidecar::StartupWatch>()
+                            .send_replace(sidecar::StartupStatus::Failed(err));
                     }
                 }
             });
@@ -116,7 +125,7 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            // 应用退出时主动终止 sidecar，不依赖 Drop 是否被执行
+            // 应用退出时主动通知 sidecar 退出；即使走不到这里，进程结束时系统也会关闭 stdin 管道
             if let tauri::RunEvent::Exit = event {
                 let state = app_handle.state::<Mutex<Option<sidecar::SidecarManager>>>();
                 let mut guard = match state.lock() {
@@ -124,7 +133,7 @@ pub fn run() {
                     Err(p) => p.into_inner(),
                 };
                 if let Some(manager) = guard.take() {
-                    drop(manager); // Drop 中 start_kill
+                    drop(manager);
                 }
             }
         });

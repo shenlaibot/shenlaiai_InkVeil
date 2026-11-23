@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse
 import hmac
 import os
+import sys
+import threading
 from typing import Optional
 
 import uvicorn
@@ -211,6 +213,22 @@ def ner(req: NERRequest) -> dict:
     return {"ok": True, "entities": entities, "model_loaded": True, "error": None}
 
 
+def _exit_on_stdin_eof() -> None:
+    """阻塞读 stdin，读到 EOF（主进程退出或崩溃）就结束本进程。
+
+    直接读文件描述符：Windows 无控制台产物里 sys.stdin 可能是 None，但管道句柄仍然有效。
+    用 os._exit 避免等待进行中的请求；进程退出后 PyInstaller 引导进程会清理临时目录。
+    """
+    try:
+        while os.read(0, 4096):
+            pass
+    except OSError as e:
+        # 无法监听不是致命错误，服务继续运行；打包冒烟测试会发现这种情况。
+        print(f"[sidecar] cannot watch stdin: {e}", file=sys.stderr)
+        return
+    os._exit(0)
+
+
 def main() -> None:
     global _TOKEN
 
@@ -223,6 +241,11 @@ def main() -> None:
         default=None,
         help="Rust 主进程注入的认证 token（缺省则不要求认证，仅用于开发/调试）",
     )
+    parser.add_argument(
+        "--exit-on-stdin-eof",
+        action="store_true",
+        help="stdin 关闭时退出。主进程持有写端，以此保证主进程退出或崩溃后不留下 sidecar",
+    )
     args = parser.parse_args()
     # 发布期必须带 token：否则本机任意进程都能调用 /parse（读任意文件）与 /redact（写任意目录）。
     # 仅开发/测试可显式设置 ANONKIT_ALLOW_NO_TOKEN=1 放行。
@@ -230,6 +253,9 @@ def main() -> None:
         parser.error("缺少 --token：sidecar 默认拒绝无认证启动（开发调试请设置 ANONKIT_ALLOW_NO_TOKEN=1）")
 
     _TOKEN = args.token
+
+    if args.exit_on_stdin_eof:
+        threading.Thread(target=_exit_on_stdin_eof, daemon=True).start()
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 

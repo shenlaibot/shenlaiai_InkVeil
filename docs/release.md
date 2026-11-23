@@ -168,3 +168,10 @@ SIDECAR_PY=<py311-venv>/bin/python bash scripts/build-sidecar.sh --onedir
 - [ ] `THIRD-PARTY-NOTICES.md` 全部“待核实”关闭，且 wheel 内的许可证文本已打进安装包
 - [ ] `SECURITY.md` 占位符（邮箱 / PGP）已替换
 - [ ] 签名与公证验收通过；updater 私钥只在 Secrets 中
+
+## macOS 签名与强化运行时
+
+目前没有 Developer ID，`tauri.conf.json` 用临时签名（`signingIdentity: "-"`）并关闭 `hardenedRuntime`。
+PyInstaller 单文件产物运行时会从临时目录加载 Python；强化运行时下，临时签名的进程不允许加载它，sidecar 会直接退出。
+接入 Developer ID 公证时必须开启强化运行时，并为 sidecar 加 `com.apple.security.cs.disable-library-validation` 授权，否则同样启动失败。
+`build-installers` 的冒烟步骤会运行打包后的 sidecar，这类问题会让构建失败。

@@ -1,10 +1,11 @@
 """墨隐 InkVeil sidecar 接口冒烟测试（pytest）。"""
 
 import os
+import threading
 
 from fastapi.testclient import TestClient
 
-from app import app
+from app import _exit_on_stdin_eof, app
 
 client = TestClient(app)
 
@@ -108,3 +109,36 @@ def test_corrupt_files_give_friendly_errors(tmp_path):
     ole.write_bytes(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 64)
     r = client.post("/parse", json={"path": str(ole)})
     assert r.status_code == 500 and "加密" in r.json()["detail"]
+
+
+def test_exit_on_stdin_eof_exits_when_pipe_closes(monkeypatch):
+    read_end, write_end = os.pipe()
+    saved_stdin = os.dup(0)
+    exits = []
+    monkeypatch.setattr(os, "_exit", exits.append)
+    os.dup2(read_end, 0)
+    try:
+        worker = threading.Thread(target=_exit_on_stdin_eof, daemon=True)
+        worker.start()
+        worker.join(0.2)
+        assert worker.is_alive() and exits == []  # 管道未关闭时持续等待
+        os.close(write_end)
+        worker.join(5)
+    finally:
+        os.dup2(saved_stdin, 0)
+        os.close(saved_stdin)
+        os.close(read_end)
+    assert exits == [0]
+
+
+def test_exit_on_stdin_eof_keeps_running_when_stdin_unavailable(monkeypatch):
+    saved_stdin = os.dup(0)
+    exits = []
+    monkeypatch.setattr(os, "_exit", exits.append)
+    os.close(0)
+    try:
+        _exit_on_stdin_eof()
+    finally:
+        os.dup2(saved_stdin, 0)
+        os.close(saved_stdin)
+    assert exits == []

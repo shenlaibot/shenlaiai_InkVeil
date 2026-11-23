@@ -35,7 +35,7 @@ pub fn builtin_rules() -> Vec<RuleDef> {
             // 11 位手机号，数字间可含常见分隔符（空格/-/·/_/全角空格/点），
             // 如 138 0013 8000、138-0013-8000、138.0013.8000。
             // 前 10 位数字后可带 0-1 个分隔符，第 11 位必须是数字（整体以数字结尾）。
-            regex: r"[1１][3-9３-９](?:[\s\-·_\u{3000}.]?\d){9}".into(),
+            regex: r"[1１][3-9３-９](?:[\p{Zs}\t\-·_.]?\d){9}".into(),
             enabled: true,
             confidence: 0.98,
             context_keywords: vec!["手机".into(), "电话".into(), "联系电话".into(), "Mobile".into()],
@@ -54,7 +54,8 @@ pub fn builtin_rules() -> Vec<RuleDef> {
             // 16 或 19 位数字（真实卡号主要长度），数字间可含常见分隔符，
             // 如 6222 0202 0008 8888 884、5100 1406 8350 5150 6677。
             // 不匹配 17/18 位连续数字，避免命中 18 位身份证。Luhn 仅作置信度调节（见 detect.rs）。
-            regex: r"(?:\d{4}[\s\-·_\u{3000}.]?){3}\d{4}(?:[\s\-·_\u{3000}.]?\d{3,4})?".into(),
+            // 换行可能是相邻段落或单元格的边界，不能把边界两侧拼成卡号。
+            regex: r"(?:\d{4}[\p{Zs}\t\-·_.]?){3}\d{4}(?:[\p{Zs}\t\-·_.]?\d{3,4})?".into(),
             enabled: true,
             confidence: 0.95,
             context_keywords: vec!["银行卡".into(), "卡号".into(), "银行账户".into(), "账号".into()],
@@ -104,7 +105,7 @@ pub fn builtin_rules() -> Vec<RuleDef> {
         RuleDef {
             id: ID_PHONE.into(),
             label: "固定电话".into(),
-            regex: r"(?:[（(]0\d{2,3}[）)]|0\d{2,3})[-\s]?\d{7,8}(?:-\d{1,5})?".into(),
+            regex: r"(?:[（(]0\d{2,3}[）)]|0\d{2,3})[\p{Zs}\t-]?\d{7,8}(?:-\d{1,5})?".into(),
             enabled: true,
             confidence: 0.9,
             context_keywords: vec!["电话".into(), "座机".into(), "传真".into()],

@@ -571,9 +571,10 @@ pub async fn scan_files(
     if paths.is_empty() {
         return Ok(ScanResult { files: vec![], aliases: vec![], global_warnings: vec![] });
     }
-    tauri::async_runtime::spawn_blocking(move || scan_files_blocking(app, paths, options, generation))
-        .await
-        .map_err(|e| format!("扫描任务异常终止: {e}"))?
+    with_sidecar(app, "扫描任务异常终止", move |app, client| {
+        scan_files_blocking(app, client, paths, options, generation)
+    })
+    .await
 }
 
 /// 扫描代次：新扫描（或取消请求）会使旧扫描失效。
@@ -593,11 +594,11 @@ pub const SCAN_CANCELLED: &str = "扫描已取消";
 
 fn scan_files_blocking(
     app: AppHandle,
+    client: SidecarClient,
     paths: Vec<String>,
     options: ScanOptions,
     generation: u64,
 ) -> Result<ScanResult, String> {
-    let client = sidecar_client(&app)?;
     let rules: Vec<RuleDef> = options
         .rules
         .iter()
@@ -930,20 +931,19 @@ pub async fn confirm_redact(
     output_dir: String,
     options: RedactOptions,
 ) -> Result<RedactResult, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        confirm_redact_blocking(app, inputs, output_dir, options)
+    with_sidecar(app, "导出任务异常终止", move |app, client| {
+        confirm_redact_blocking(app, client, inputs, output_dir, options)
     })
     .await
-    .map_err(|e| format!("导出任务异常终止: {e}"))?
 }
 
 fn confirm_redact_blocking(
     app: AppHandle,
+    client: SidecarClient,
     inputs: Vec<RedactInput>,
     output_dir: String,
     options: RedactOptions,
 ) -> Result<RedactResult, String> {
-    let client = sidecar_client(&app)?;
     let strategies: HashMap<String, Strategy> = options
         .strategies
         .iter()
@@ -1414,9 +1414,8 @@ pub async fn restore_document(
     passphrase: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let mapping = load_restore_mapping(&app, &mapping_path, passphrase)?;
-    let client = sidecar_client(&app)?;
     let table = mapping.placeholder_to_original().clone();
-    tokio::task::spawn_blocking(move || {
+    with_sidecar(app, "文档还原任务异常", move |_, client| {
         client
             .restore_doc(
                 std::path::Path::new(&input_path),
@@ -1426,7 +1425,6 @@ pub async fn restore_document(
             .map_err(|e| format!("文档还原失败: {e}"))
     })
     .await
-    .map_err(|e| format!("文档还原任务异常: {e}"))?
 }
 
 // ---------------------------------------------------------------------------
@@ -1567,16 +1565,40 @@ pub fn vault_set_dict(app: AppHandle, terms: Vec<String>) -> Result<VaultInfo, S
 // 辅助
 // ---------------------------------------------------------------------------
 
-fn sidecar_client(app: &AppHandle) -> Result<SidecarClient, String> {
-    let state = app.state::<std::sync::Mutex<Option<crate::sidecar::SidecarManager>>>();
-    let guard = state.lock().unwrap_or_else(|p| p.into_inner());
-    match guard.as_ref() {
-        Some(m) => Ok(SidecarClient::with_token(
-            m.base_url().to_string(),
-            Some(m.token().to_string()),
-        )),
-        None => Err("处理引擎（sidecar）未就绪，请检查 Python 环境后重启应用".to_string()),
+/// 异步等待引擎就绪，在阻塞线程中构建、使用和销毁 HTTP 客户端。
+async fn with_sidecar<T: Send + 'static>(
+    app: AppHandle,
+    task_error: &str,
+    run: impl FnOnce(AppHandle, SidecarClient) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    use crate::sidecar::{StartupStatus, StartupWatch};
+
+    let mut startup = app.state::<StartupWatch>().subscribe();
+    let status = startup
+        .wait_for(|s| *s != StartupStatus::Starting)
+        .await
+        .map_err(|_| "处理引擎启动状态丢失，请重启应用".to_string())?
+        .clone();
+    if let StartupStatus::Failed(reason) = status {
+        return Err(format!(
+            "处理引擎启动失败，请重启应用；仍失败请把这段信息反馈给开发者：{reason}"
+        ));
     }
+
+    let (base_url, token) = {
+        let state = app.state::<Mutex<Option<crate::sidecar::SidecarManager>>>();
+        let guard = state.lock().unwrap_or_else(|p| p.into_inner());
+        let manager = guard.as_ref().ok_or("处理引擎已停止，请重启应用")?;
+        (manager.base_url().to_owned(), manager.token().to_owned())
+    };
+
+    // reqwest::blocking 在构建客户端时也会阻塞，必须在阻塞线程中调用。
+    tauri::async_runtime::spawn_blocking(move || {
+        let client = SidecarClient::with_token(base_url, Some(token));
+        run(app, client)
+    })
+    .await
+    .map_err(|e| format!("{task_error}: {e}"))?
 }
 
 fn emit_progress(

@@ -44,6 +44,9 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # 未配置 Developer ID 时回退为临时签名（"-"），否则 Apple Silicon 上未签名应用会提示"已损坏"。
+          # 配置了 APPLE_SIGNING_IDENTITY（证书 SHA-1 或名称）即按 Developer ID 签名；公证另需 APPLE_ID 等，见 docs/release.md。
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || '-' }}
         run: |
           set -e
           if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
@@ -52,6 +55,9 @@ jobs:
             echo "::warning::未配置 TAURI_SIGNING_PRIVATE_KEY，跳过 updater 签名（仅产出安装包）"
             npm run tauri build -- --config '{"bundle":{"createUpdaterArtifacts":false}}'
           fi
+      - name: 冒烟：运行打包后的 sidecar
+        shell: bash
+        run: sidecar/.venv/bin/python scripts/smoke_bundled_sidecar.py target/release/bundle/macos/InkVeil.app/Contents/MacOS/anonkit-sidecar
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: macos-installers
@@ -97,6 +103,9 @@ jobs:
             echo "::warning::未配置 TAURI_SIGNING_PRIVATE_KEY，跳过 updater 签名（仅产出安装包）"
             npm run tauri build -- --config '{"bundle":{"createUpdaterArtifacts":false}}'
           fi
+      - name: 冒烟：运行打包后的 sidecar
+        shell: bash
+        run: sidecar/.venv/Scripts/python.exe scripts/smoke_bundled_sidecar.py target/release/anonkit-sidecar.exe
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows-installers
@@ -145,6 +154,9 @@ jobs:
             echo "::warning::未配置 TAURI_SIGNING_PRIVATE_KEY，跳过 updater 签名（仅产出安装包）"
             npm run tauri build -- --bundles deb appimage --config '{"bundle":{"createUpdaterArtifacts":false}}'
           fi
+      - name: 冒烟：运行打包后的 sidecar
+        shell: bash
+        run: sidecar/.venv/bin/python scripts/smoke_bundled_sidecar.py target/release/anonkit-sidecar
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: linux-installers

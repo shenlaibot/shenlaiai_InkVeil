@@ -1,8 +1,8 @@
 """导出后残留复检（Residue Verifier v0）。
 
 对**输出文件**的所有可提取内容反查“已确认要脱敏的原文”：
-- OOXML（docx/xlsx）：遍历压缩包内全部 part（正文、批注、页眉页脚、元数据、sheet 名、缩略图旁数据等），
-  同时检查原始 XML 与“去标签后的拼接文本”（敏感词被拆进多个 run 时也能发现）；
+- OOXML（docx/xlsx）：遍历压缩包内各文本部件，检查部件名、属性、元数据和文本；
+  段落及富文本单元格内部拼接 run，保留段落和单元格的边界；
 - PDF：遍历全部对象（含 XObject、注释、元数据）解压后的字节，搜索 UTF-8 / UTF-16BE / GBK 编码形态，
   并用 PDFium 提取各页文字再搜索；
 - 文本：按原编码解码后搜索。
@@ -19,8 +19,26 @@ import re
 import unicodedata
 import zipfile
 
+from lxml import etree
+
+from ooxml_docx import MC, W
+from ooxml_xlsx import NS_A, NS_MAIN
+
 _TAG = re.compile(r"<[^>]+>")
 _SEP = re.compile(r"[\s\-·_.　]+")
+_XML_TEXT_GROUPS = {
+    f"{{{W}}}p",
+    f"{{{NS_A}}}p",
+    f"{{{NS_MAIN}}}si",
+    f"{{{NS_MAIN}}}is",
+    f"{{{NS_MAIN}}}text",
+    f"{{{MC}}}Fallback",
+    "{http://purl.oclc.org/ooxml/wordprocessingml/main}p",
+    "{http://purl.oclc.org/ooxml/drawingml/main}p",
+    "{http://purl.oclc.org/ooxml/spreadsheetml/main}si",
+    "{http://purl.oclc.org/ooxml/spreadsheetml/main}is",
+    "{http://purl.oclc.org/ooxml/spreadsheetml/main}text",
+}
 
 
 def _norm(s: str) -> str:
@@ -28,31 +46,55 @@ def _norm(s: str) -> str:
     return _SEP.sub("", unicodedata.normalize("NFKC", s))
 
 
-def _variants(needle: str) -> list[str]:
-    out = [needle]
-    n = _norm(needle)
-    if n and n != needle:
-        out.append(n)
-    return out
-
-
-def _hit(haystack: str, needle: str) -> int:
-    """返回 needle 在 haystack 中（含规范化形态）出现的次数。"""
-    cnt = haystack.count(needle)
-    if cnt:
-        return cnt
-    nn = _norm(needle)
-    if len(nn) >= 2:
-        return _norm(haystack).count(nn)
-    return 0
-
-
 def _scan_text_blob(label: str, blob: str, needles: list[str], found: dict) -> None:
+    normalized = _norm(blob)
     for i, nd in enumerate(needles):
-        c = _hit(blob, nd)
+        c = blob.count(nd)
+        nn = _norm(nd)
+        if len(nn) >= 2:
+            c = max(c, normalized.count(nn))
         if c:
             found.setdefault((i, label), 0)
             found[(i, label)] += c
+
+
+def _xml_text_blocks(element, group: list[str] | None = None):
+    """合并同一段落或富文本值里的文字，独立检查嵌套段落和注释。"""
+    parts = [] if element.tag in _XML_TEXT_GROUPS else group
+    if element.text:
+        if parts is None or not isinstance(element.tag, str):
+            yield element.text
+        else:
+            parts.append(element.text)
+    for child in element:
+        yield from _xml_text_blocks(child, parts)
+        if child.tail:
+            if parts is None:
+                yield child.tail
+            else:
+                parts.append(child.tail)
+    if parts is not group:
+        yield "".join(parts)
+
+
+def _scan_xml(name: str, data: bytes, needles: list[str], found: dict) -> None:
+    parser = etree.XMLParser(resolve_entities=False, no_network=True)
+    try:
+        root = etree.fromstring(data, parser)
+    except etree.XMLSyntaxError:
+        root = None
+    if root is None or root.getroottree().docinfo.doctype:
+        # 无法按 OOXML 结构读取时，保留对原始字节和去标签文本的检查。
+        raw = data.decode("utf-8", "ignore")
+        _scan_text_blob(name, html.unescape(raw), needles, found)
+        _scan_text_blob(f"{name}（文本）", html.unescape(_TAG.sub("", raw)), needles, found)
+        return
+
+    # XML 禁止 NUL。用它隔开独立文本和属性，规范化也不会把这些边界抹掉。
+    text = "\0".join(_xml_text_blocks(root))
+    attributes = "\0".join(value for el in root.iter("*") for value in el.attrib.values())
+    _scan_text_blob(f"{name}（文本）", text, needles, found)
+    _scan_text_blob(f"{name}（属性）", attributes, needles, found)
 
 
 def _scan_zip(path: str, needles: list[str]) -> dict:
@@ -65,15 +107,10 @@ def _scan_zip(path: str, needles: list[str]) -> dict:
                 continue
             # 部件名本身也可能含原文（如以姓名命名的附件）
             _scan_text_blob(f"{name}（部件名）", name, needles, found)
-            if not name.lower().endswith((".xml", ".rels", ".txt", ".csv", ".json")):
-                continue
-            try:
-                raw = data.decode("utf-8", "ignore")
-            except Exception:
-                continue
-            _scan_text_blob(name, html.unescape(raw), needles, found)
-            stripped = html.unescape(_TAG.sub("", raw))
-            _scan_text_blob(f"{name}（文本）", stripped, needles, found)
+            if name.lower().endswith((".xml", ".rels")):
+                _scan_xml(name, data, needles, found)
+            elif name.lower().endswith((".txt", ".csv", ".json")):
+                _scan_text_blob(name, data.decode("utf-8", "ignore"), needles, found)
     return found
 
 
